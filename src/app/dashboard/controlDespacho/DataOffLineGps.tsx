@@ -1,0 +1,1346 @@
+"use client";
+import { useState, useEffect, useMemo } from "react";
+import {
+  AlertTriangle,
+  MapPin,
+  TrendingUp,
+  Download,
+  RefreshCw,
+} from "lucide-react";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
+
+// Definir los tipos de las props
+interface DataOffLineGpsProps {
+  ruta: string;
+  fecha: string;
+  onDataSent?: () => void;
+}
+
+// Tipos TypeScript
+interface GPSPoint {
+  item: number;
+  fecha: string;
+  hora: string;
+  speedKPH: number;
+  longitude: number;
+  latitude: number;
+  odometerKM: number;
+  address: string;
+}
+
+interface Geofence {
+  id: number;
+  name: string;
+  centerLat: number;
+  centerLon: number;
+  radius: number;
+  active: boolean;
+}
+
+interface Detection {
+  type: "entry" | "exit" | "pass_through" | "near_zone";
+  fromPoint: GPSPoint;
+  toPoint: GPSPoint;
+  distanceFrom: number;
+  distanceTo: number;
+  minDistanceToCenter?: number;
+  geofence: Geofence;
+  confidence: "high" | "medium" | "low";
+  timestamp: string;
+  vehicleId: string;
+  adaptiveRadius?: number; // Radio usado para la detección
+  endTime?: string;
+}
+
+// interface DetectionResult {
+//   geofence: Geofence;
+//   detections: Detection[];
+//   summary: {
+//     total: number;
+//     entries: number;
+//     exits: number;
+//     passThrough: number;
+//     nearZone: number;
+//   };
+// }
+
+interface APIResponse {
+  listaTablas: GPSPoint[];
+}
+
+interface VehicleSchedule {
+  vehicleId: string;
+  codigo: number;
+  startTime: string;
+  endTime: string;
+}
+
+interface BatchAnalysisResult {
+  vehicleId: string;
+  codigo: number; // ← AGREGAR ESTO
+  fechaini: string; // ← AGREGAR ESTO
+  status: "detected" | "not_detected" | "error";
+  detections: Detection[];
+  error?: string;
+  gpsPointsCount: number;
+}
+
+interface APIVehicleData {
+  codigo: number;
+  deviceID: string;
+  fechaini: string;
+  fechafin: string;
+}
+
+interface APIDataItem {
+  codasig: string;
+  deviceID: string;
+  nom_control: string;
+  hora_inicio: string;
+  hora_estimada: string;
+  hora_llegada: string;
+  volado: string;
+  fecha: string;
+}
+
+// Modificar la función para recibir las props con tipos
+export default function DataOffLineGps({
+  ruta,
+  fecha,
+  onDataSent,
+}: DataOffLineGpsProps) {
+  const [open, setOpen] = useState(false);
+
+  const getDynamicMinutesForRoute5 = (
+    hours: number,
+    minutes: number,
+    seconds: number = 0
+  ): number[] => {
+    // Convertir la hora a formato de segundos totales para comparación más precisa
+    const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+
+    // Definir los rangos de tiempo y sus respectivos minutos para ruta 5 final (en segundos)
+    const timeRanges = [
+      {
+        start: 6 * 3600 + 0 * 60 + 0,
+        end: 6 * 3600 + 7 * 60 + 59,
+        minutes: [9, 36, 52, 68, 85, 115, 123],
+      }, // 6:00:00 - 6:07:59
+      {
+        start: 6 * 3600 + 8 * 60 + 0,
+        end: 6 * 3600 + 14 * 60 + 59,
+        minutes: [10, 36, 53, 69, 87, 117, 125],
+      }, // 6:08:00 - 6:14:59
+      {
+        start: 6 * 3600 + 15 * 60 + 0,
+        end: 6 * 3600 + 21 * 60 + 59,
+        minutes: [10, 37, 54, 70, 88, 118, 128],
+      }, // 6:15:00 - 6:21:59
+      {
+        start: 6 * 3600 + 22 * 60 + 0,
+        end: 6 * 3600 + 28 * 60 + 59,
+        minutes: [10, 39, 56, 72, 90, 120, 130],
+      }, // 6:22:00 - 6:28:59
+      {
+        start: 6 * 3600 + 29 * 60 + 0,
+        end: 6 * 3600 + 35 * 60 + 59,
+        minutes: [10, 41, 58, 74, 92, 122, 132],
+      }, // 6:29:00 - 6:35:59
+      {
+        start: 6 * 3600 + 36 * 60 + 0,
+        end: 6 * 3600 + 42 * 60 + 59,
+        minutes: [11, 44, 60, 76, 93, 123, 133],
+      }, // 6:36:00 - 6:42:59
+      {
+        start: 6 * 3600 + 43 * 60 + 0,
+        end: 6 * 3600 + 43 * 60 + 59,
+        minutes: [12, 45, 64, 85, 105, 137, 147],
+      }, // 6:43:00 - 6:43:59
+    ];
+
+    // Buscar el rango de tiempo que corresponde
+    for (const range of timeRanges) {
+      if (totalSeconds >= range.start && totalSeconds <= range.end) {
+        return range.minutes;
+      }
+    }
+
+    // Si no está en ningún rango específico (después de 6:43:59 o antes de 6:00:00), usar los minutos constantes
+    // Los últimos minutos de la tabla (6:43): [12, 45, 64, 85, 105, 137, 147]
+    return [12, 45, 64, 85, 105, 137, 147];
+  };
+
+  // Función para obtener los minutos dinámicos de la ruta 6
+  const getDynamicMinutesForRoute6 = (
+    hours: number,
+    minutes: number,
+    seconds: number = 0
+  ): number[] => {
+    // Convertir la hora a formato de segundos totales para comparación más precisa
+    const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+
+    // Definir los rangos de tiempo y sus respectivos minutos (en segundos)
+    const timeRanges = [
+      {
+        start: 4 * 3600 + 55 * 60 + 0,
+        end: 5 * 3600 + 1 * 60 + 59,
+        minutes: [4, 13, 32, 46, 56, 76, 96],
+      }, // 4:55:00 - 5:01:59
+      {
+        start: 5 * 3600 + 2 * 60 + 0,
+        end: 5 * 3600 + 8 * 60 + 59,
+        minutes: [4, 13, 32, 46, 57, 77, 97],
+      }, // 5:02:00 - 5:08:59
+      {
+        start: 5 * 3600 + 9 * 60 + 0,
+        end: 5 * 3600 + 14 * 60 + 59,
+        minutes: [4, 13, 33, 47, 57, 77, 97],
+      }, // 5:09:00 - 5:14:59
+      {
+        start: 5 * 3600 + 15 * 60 + 0,
+        end: 5 * 3600 + 19 * 60 + 59,
+        minutes: [4, 13, 34, 48, 58, 78, 98],
+      }, // 5:15:00 - 5:19:59
+      {
+        start: 5 * 3600 + 20 * 60 + 0,
+        end: 5 * 3600 + 24 * 60 + 59,
+        minutes: [4, 13, 34, 49, 60, 80, 100],
+      }, // 5:20:00 - 5:24:59
+      {
+        start: 5 * 3600 + 25 * 60 + 0,
+        end: 5 * 3600 + 29 * 60 + 59,
+        minutes: [4, 13, 35, 50, 62, 82, 102],
+      }, // 5:25:00 - 5:29:59
+      {
+        start: 5 * 3600 + 30 * 60 + 0,
+        end: 5 * 3600 + 34 * 60 + 59,
+        minutes: [4, 13, 35, 51, 62, 82, 102],
+      }, // 5:30:00 - 5:34:59
+      {
+        start: 5 * 3600 + 35 * 60 + 0,
+        end: 5 * 3600 + 39 * 60 + 59,
+        minutes: [4, 13, 35, 51, 62, 83, 103],
+      }, // 5:35:00 - 5:39:59
+      {
+        start: 5 * 3600 + 40 * 60 + 0,
+        end: 5 * 3600 + 44 * 60 + 59,
+        minutes: [4, 13, 36, 52, 62, 83, 103],
+      }, // 5:40:00 - 5:44:59
+      {
+        start: 5 * 3600 + 45 * 60 + 0,
+        end: 5 * 3600 + 49 * 60 + 59,
+        minutes: [4, 13, 38, 53, 63, 84, 104],
+      }, // 5:45:00 - 5:49:59
+      {
+        start: 5 * 3600 + 50 * 60 + 0,
+        end: 5 * 3600 + 54 * 60 + 59,
+        minutes: [5, 14, 38, 54, 64, 85, 105],
+      }, // 5:50:00 - 5:54:59
+      {
+        start: 5 * 3600 + 55 * 60 + 0,
+        end: 5 * 3600 + 59 * 60 + 59,
+        minutes: [5, 15, 39, 55, 65, 87, 107],
+      }, // 5:55:00 - 5:59:59
+      {
+        start: 6 * 3600 + 0 * 60 + 0,
+        end: 6 * 3600 + 4 * 60 + 59,
+        minutes: [5, 15, 40, 56, 66, 88, 108],
+      }, // 6:00:00 - 6:04:59
+      {
+        start: 6 * 3600 + 5 * 60 + 0,
+        end: 6 * 3600 + 9 * 60 + 59,
+        minutes: [5, 15, 41, 58, 68, 90, 110],
+      }, // 6:05:00 - 6:09:59
+      {
+        start: 6 * 3600 + 10 * 60 + 0,
+        end: 6 * 3600 + 14 * 60 + 59,
+        minutes: [5, 15, 41, 59, 69, 92, 112],
+      }, // 6:10:00 - 6:14:59
+      {
+        start: 6 * 3600 + 15 * 60 + 0,
+        end: 6 * 3600 + 19 * 60 + 59,
+        minutes: [5, 15, 42, 60, 70, 94, 114],
+      }, // 6:15:00 - 6:19:59
+      {
+        start: 6 * 3600 + 20 * 60 + 0,
+        end: 6 * 3600 + 24 * 60 + 59,
+        minutes: [5, 15, 43, 61, 71, 96, 116],
+      }, // 6:20:00 - 6:24:59
+      {
+        start: 6 * 3600 + 25 * 60 + 0,
+        end: 6 * 3600 + 29 * 60 + 59,
+        minutes: [5, 15, 44, 63, 73, 98, 118],
+      }, // 6:25:00 - 6:29:59
+      {
+        start: 6 * 3600 + 30 * 60 + 0,
+        end: 6 * 3600 + 34 * 60 + 59,
+        minutes: [5, 15, 45, 64, 74, 100, 120],
+      }, // 6:30:00 - 6:34:59
+      {
+        start: 6 * 3600 + 35 * 60 + 0,
+        end: 6 * 3600 + 39 * 60 + 59,
+        minutes: [5, 15, 46, 66, 76, 102, 122],
+      }, // 6:35:00 - 6:39:59
+      {
+        start: 6 * 3600 + 40 * 60 + 0,
+        end: 6 * 3600 + 44 * 60 + 59,
+        minutes: [5, 15, 47, 67, 78, 105, 125],
+      }, // 6:40:00 - 6:44:59
+      {
+        start: 6 * 3600 + 45 * 60 + 0,
+        end: 6 * 3600 + 49 * 60 + 59,
+        minutes: [5, 15, 48, 68, 80, 107, 127],
+      }, // 6:45:00 - 6:49:59
+      {
+        start: 6 * 3600 + 50 * 60 + 0,
+        end: 6 * 3600 + 54 * 60 + 59,
+        minutes: [5, 15, 48, 68, 82, 110, 130],
+      }, // 6:50:00 - 6:54:59
+      {
+        start: 6 * 3600 + 55 * 60 + 0,
+        end: 6 * 3600 + 59 * 60 + 59,
+        minutes: [5, 15, 48, 68, 84, 112, 132],
+      }, // 6:55:00 - 6:59:59
+      {
+        start: 7 * 3600 + 0 * 60 + 0,
+        end: 7 * 3600 + 4 * 60 + 59,
+        minutes: [5, 15, 48, 68, 85, 115, 135],
+      }, // 7:00:00 - 7:04:59
+      {
+        start: 7 * 3600 + 5 * 60 + 0,
+        end: 7 * 3600 + 9 * 60 + 59,
+        minutes: [5, 15, 48, 68, 86, 116, 136],
+      }, // 7:05:00 - 7:09:59
+      {
+        start: 7 * 3600 + 10 * 60 + 0,
+        end: 7 * 3600 + 14 * 60 + 59,
+        minutes: [5, 15, 48, 68, 87, 117, 137],
+      }, // 7:10:00 - 7:14:59
+      {
+        start: 7 * 3600 + 15 * 60 + 0,
+        end: 7 * 3600 + 19 * 60 + 59,
+        minutes: [5, 15, 48, 68, 88, 118, 138],
+      }, // 7:15:00 - 7:19:59
+      {
+        start: 7 * 3600 + 20 * 60 + 0,
+        end: 7 * 3600 + 24 * 60 + 59,
+        minutes: [5, 15, 48, 68, 88, 118, 138],
+      }, // 7:20:00 - 7:24:59
+      {
+        start: 7 * 3600 + 25 * 60 + 0,
+        end: 7 * 3600 + 25 * 60 + 59,
+        minutes: [5, 15, 48, 72, 92, 122, 142],
+      }, // 7:25:00 - 7:25:59
+    ];
+
+    for (const range of timeRanges) {
+      if (totalSeconds >= range.start && totalSeconds <= range.end) {
+        return range.minutes;
+      }
+    }
+
+    // Si no está en ningún rango específico (después de 7:25:59), usar los minutos constantes
+    // Los últimos minutos de la tabla (7:25): [5, 15, 48, 72, 92, 122, 142]
+    return [5, 15, 48, 72, 92, 122, 142];
+  };
+
+  const adjustTimeForLargeRadius = (
+    timeString: string,
+    adaptiveRadius?: number
+  ): string => {
+    let secondsToSubtract = 0;
+
+    switch (adaptiveRadius) {
+      case 10:
+        secondsToSubtract = 40; // 0:40
+        break;
+      case 20:
+      case 30:
+      case 40:
+        secondsToSubtract = 45; // 0:45
+        break;
+      case 50:
+        secondsToSubtract = 30; // 0:30
+        break;
+      case 100:
+        secondsToSubtract = 90; // 1:30
+        break;
+      case 200:
+        secondsToSubtract = 150; // 2:30
+        break;
+      case 300:
+        secondsToSubtract = 140; // 2:20
+        break;
+      case 400:
+        secondsToSubtract = 180; // 3:00
+        break;
+      case 500:
+        secondsToSubtract = 240; // 4:00
+        break;
+      default:
+        return timeString; // no ajuste
+    }
+
+    const [hours, minutes, seconds] = timeString.split(":").map(Number);
+    let totalSeconds = hours * 3600 + minutes * 60 + seconds;
+
+    totalSeconds -= secondsToSubtract;
+
+    // Evitar tiempos negativos
+    if (totalSeconds < 0) totalSeconds = 0;
+
+    const adjustedHours = Math.floor(totalSeconds / 3600);
+    const adjustedMinutes = Math.floor((totalSeconds % 3600) / 60);
+    const remainingSeconds = totalSeconds % 60;
+
+    return `${adjustedHours.toString().padStart(2, "0")}:${adjustedMinutes
+      .toString()
+      .padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`;
+  };
+
+  const calculateTimeDifference = (
+    startTime: string,
+    endTime: string
+  ): string => {
+    const timeToSeconds = (time: string): number => {
+      const parts = time.split(":").map(Number);
+      const hours = parts[0] || 0;
+      const minutes = parts[1] || 0;
+      const seconds = parts[2] || 0;
+      return hours * 3600 + minutes * 60 + seconds;
+    };
+
+    const startSeconds = timeToSeconds(startTime);
+    const endSeconds = timeToSeconds(endTime);
+
+    const rawDifference = endSeconds - startSeconds;
+    const isNegative = rawDifference < 0;
+    const differenceSeconds = Math.abs(rawDifference);
+
+    const hours = Math.floor(differenceSeconds / 3600);
+    const minutes = Math.floor((differenceSeconds % 3600) / 60);
+    const seconds = differenceSeconds % 60;
+
+    let result = "";
+    if (hours > 0) {
+      result = `${hours}h ${minutes}min ${seconds}seg`;
+    } else if (minutes > 0) {
+      result = `${minutes}min ${seconds}seg`;
+    } else {
+      result = `${seconds}seg`;
+    }
+
+    return isNegative ? `-${result}` : result;
+  };
+
+  const calculateEndTime = (
+    startTime: string,
+    minutesToAdd: number
+  ): string => {
+    const [hours, minutes] = startTime.split(":").map(Number);
+    const totalMinutes = hours * 60 + minutes + minutesToAdd;
+    const endHours = Math.floor(totalMinutes / 60);
+    const endMinutes = totalMinutes % 60;
+    return `${endHours.toString().padStart(2, "0")}:${endMinutes
+      .toString()
+      .padStart(2, "0")}`;
+  };
+
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [batchLoading, setBatchLoading] = useState<boolean>(false);
+  const [batchResults, setBatchResults] = useState<BatchAnalysisResult[]>([]);
+
+  useEffect(() => {
+    if (open) {
+      // Cuando el modal se abre, reinicia los estados
+      setBatchResults([]);
+      setBatchLoading(false);
+    }
+  }, [open]);
+
+  // NUEVO: Estados para manejar la API de horarios
+  const [vehicleSchedules, setVehicleSchedules] = useState<VehicleSchedule[]>(
+    []
+  );
+  const [loadingSchedules, setLoadingSchedules] = useState<boolean>(false);
+  const [selectedDate, setSelectedDate] = useState<string>(fecha);
+  const [selectedRoute, setSelectedRoute] = useState<string>(ruta);
+
+  useEffect(() => {
+    setSelectedRoute(ruta);
+    setSelectedDate(fecha);
+  }, [ruta, fecha]);
+
+  // 7 GEOCERCAS FIJAS
+
+  const getGeofencesByRoute = (route: string): Geofence[] => {
+    if (route === "5") {
+      return [
+        {
+          id: 1,
+          name: "VENEZUELA",
+          centerLat: -12.063352,
+          centerLon: -77.105005,
+          radius: 10,
+          active: true,
+        },
+        {
+          id: 2,
+          name: "GARZON",
+          centerLat: -12.069217,
+          centerLon: -77.047214,
+          radius: 10,
+          active: true,
+        },
+        {
+          id: 3,
+          name: "OBRERO",
+          centerLat: -12.06399,
+          centerLon: -77.024997,
+          radius: 10,
+          active: true,
+        },
+        {
+          id: 4,
+          name: "AV SAN JUAN",
+          centerLat: -12.075216,
+          centerLon: -77.001256,
+          radius: 10,
+          active: true,
+        },
+        {
+          id: 5,
+          name: "MADRID",
+          centerLat: -12.107674,
+          centerLon: -76.992534,
+          radius: 10,
+          active: true,
+        },
+        {
+          id: 6,
+          name: "CT",
+          centerLat: -12.164936,
+          centerLon: -76.972806,
+          radius: 10,
+          active: true,
+        },
+        {
+          id: 7,
+          name: "GRIFO MILAGRO",
+          centerLat: -12.17235,
+          centerLon: -76.965037,
+          radius: 10,
+          active: true,
+        },
+      ];
+    } else if (route === "6") {
+      // Geocercas para ruta 6 (las nuevas)
+      return [
+        {
+          id: 1,
+          name: "PACIFICO",
+          centerLat: -12.175959,
+          centerLon: -76.957626,
+          radius: 10,
+          active: true,
+        },
+        {
+          id: 2,
+          name: "CT",
+          centerLat: -12.165202,
+          centerLon: -76.97242,
+          radius: 10,
+          active: true,
+        },
+        {
+          id: 3,
+          name: "MADRID",
+          centerLat: -12.108237,
+          centerLon: -76.992485,
+          radius: 10,
+          active: true,
+        },
+        {
+          id: 4,
+          name: "ARRIOLA",
+          centerLat: -12.077288,
+          centerLon: -77.009712,
+          radius: 10,
+          active: true,
+        },
+        {
+          id: 5,
+          name: "TRANSITO",
+          centerLat: -12.061889,
+          centerLon: -77.019737,
+          radius: 10,
+          active: true,
+        },
+        {
+          id: 6,
+          name: "BOLIVAR",
+          centerLat: -12.071988,
+          centerLon: -77.063782,
+          radius: 10,
+          active: true,
+        },
+        {
+          id: 7,
+          name: "INSURGENTES",
+          centerLat: -12.063117,
+          centerLon: -77.104271,
+          radius: 10,
+          active: true,
+        },
+      ];
+    } else {
+      // Por defecto, usar las geocercas de ruta 5
+      return getGeofencesByRoute("5");
+    }
+  };
+
+  const geofences: Geofence[] = useMemo(
+    () => getGeofencesByRoute(selectedRoute),
+    [selectedRoute]
+  );
+
+  useEffect(() => {
+    // Limpiar resultados cuando cambie la ruta o fecha
+    setBatchResults([]);
+  }, [selectedRoute, selectedDate]);
+
+  // NUEVA FUNCIÓN: Cargar horarios desde la API
+  const loadVehicleSchedules = async (): Promise<void> => {
+    setLoadingSchedules(true);
+    setError(null);
+
+    try {
+      const url = `https://villa.velsat.pe:8443/api/Datero/GPSUniDesp?fecha=${selectedDate}&ruta=${selectedRoute}`;
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `Error HTTP ${response.status}: No se pudieron cargar los horarios`
+        );
+      }
+
+      const apiData: APIVehicleData[] = await response.json();
+
+      if (!apiData || apiData.length === 0) {
+        throw new Error(
+          "No se encontraron vehículos para la fecha y ruta seleccionadas"
+        );
+      }
+
+      // Convertir los datos de la API al formato VehicleSchedule
+      const schedules: VehicleSchedule[] = apiData.map((item) => ({
+        vehicleId: item.deviceID,
+        codigo: item.codigo,
+        startTime: item.fechaini,
+        endTime: item.fechafin,
+      }));
+
+      setVehicleSchedules(schedules);
+
+      // Limpiar resultados anteriores
+      setBatchResults([]);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Error al cargar los horarios de vehículos"
+      );
+      setVehicleSchedules([]);
+    } finally {
+      setLoadingSchedules(false);
+    }
+  };
+
+  // Cargar horarios al montar el componente y cuando cambien ruta o fecha
+  useEffect(() => {
+    loadVehicleSchedules();
+  }, [selectedDate, selectedRoute]);
+
+  const calculateDistance = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+  ): number => {
+    const R = 6371000; // Radio de la Tierra en metros
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
+  };
+
+  const distanceFromPointToLine = (
+    px: number,
+    py: number,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number
+  ): number => {
+    const centerLat = (y1 + y2) / 2;
+    const metersPerDegreeLat = 111000;
+    const metersPerDegreeLon = 111000 * Math.cos((centerLat * Math.PI) / 180);
+
+    const pxMeters = px * metersPerDegreeLon;
+    const pyMeters = py * metersPerDegreeLat;
+    const x1Meters = x1 * metersPerDegreeLon;
+    const y1Meters = y1 * metersPerDegreeLat;
+    const x2Meters = x2 * metersPerDegreeLon;
+    const y2Meters = y2 * metersPerDegreeLat;
+
+    const A = pxMeters - x1Meters;
+    const B = pyMeters - y1Meters;
+    const C = x2Meters - x1Meters;
+    const D = y2Meters - y1Meters;
+
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+
+    if (lenSq === 0) return Math.sqrt(A * A + B * B);
+
+    let param = dot / lenSq;
+    param = Math.max(0, Math.min(1, param));
+
+    const xx = x1Meters + param * C;
+    const yy = y1Meters + param * D;
+
+    const dx = pxMeters - xx;
+    const dy = pyMeters - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const analyzeTrajectoryIntersection = (
+    gpsPoints: GPSPoint[],
+    geofence: Geofence,
+    vehicleId: string
+  ): Detection[] => {
+    const detections: Detection[] = [];
+
+    for (let i = 0; i < gpsPoints.length - 1; i++) {
+      const p1 = gpsPoints[i];
+      const p2 = gpsPoints[i + 1];
+
+      if (!p1 || !p2) continue;
+
+      const d1 = calculateDistance(
+        geofence.centerLat,
+        geofence.centerLon,
+        p1.latitude,
+        p1.longitude
+      );
+      const d2 = calculateDistance(
+        geofence.centerLat,
+        geofence.centerLon,
+        p2.latitude,
+        p2.longitude
+      );
+
+      // NUEVA LÓGICA: Elegir el punto más cercano al centro para el timestamp
+      const closestPoint = d1 <= d2 ? p1 : p2;
+      const closestTimestamp = closestPoint.fecha + " " + closestPoint.hora;
+
+      if (
+        (d1 <= geofence.radius && d2 > geofence.radius) ||
+        (d1 > geofence.radius && d2 <= geofence.radius)
+      ) {
+        detections.push({
+          type: d1 <= geofence.radius ? "exit" : "entry",
+          fromPoint: p1,
+          toPoint: p2,
+          distanceFrom: Math.round(d1),
+          distanceTo: Math.round(d2),
+          geofence: geofence,
+          confidence: "high",
+          timestamp: closestTimestamp, // ← USAR EL PUNTO MÁS CERCANO
+          vehicleId: vehicleId,
+        });
+      } else if (d1 > geofence.radius && d2 > geofence.radius) {
+        const minDistance = distanceFromPointToLine(
+          geofence.centerLon,
+          geofence.centerLat,
+          p1.longitude,
+          p1.latitude,
+          p2.longitude,
+          p2.latitude
+        );
+
+        if (minDistance <= geofence.radius) {
+          detections.push({
+            type: "pass_through",
+            fromPoint: p1,
+            toPoint: p2,
+            distanceFrom: Math.round(d1),
+            distanceTo: Math.round(d2),
+            minDistanceToCenter: Math.round(minDistance),
+            geofence: geofence,
+            confidence: "medium",
+            timestamp: closestTimestamp, // ← USAR EL PUNTO MÁS CERCANO
+            vehicleId: vehicleId,
+          });
+        }
+      } else if (d1 <= geofence.radius * 1.2 || d2 <= geofence.radius * 1.2) {
+        if (d1 <= geofence.radius || d2 <= geofence.radius) {
+          detections.push({
+            type: "near_zone",
+            fromPoint: p1,
+            toPoint: p2,
+            distanceFrom: Math.round(d1),
+            distanceTo: Math.round(d2),
+            geofence: geofence,
+            confidence: "high",
+            timestamp: closestTimestamp, // ← USAR EL PUNTO MÁS CERCANO
+            vehicleId: vehicleId,
+          });
+        }
+      }
+    }
+
+    return detections;
+  };
+
+  const getBestDetection = (detections: Detection[]): Detection | undefined => {
+    if (detections.length === 0) return undefined;
+    if (detections.length === 1) return detections[0];
+
+    let bestDetection = detections[0];
+    let bestScore = -1;
+
+    detections.forEach((detection) => {
+      // NUEVA LÓGICA: Calcular qué tan cerca está del centro de la geocerca
+      const minDistanceToCenter = Math.min(
+        detection.distanceFrom,
+        detection.distanceTo
+      );
+
+      // Puntuación basada en cercanía al centro (mientras más cerca, mejor puntuación)
+      const proximityScore = Math.max(0, 100 - minDistanceToCenter); // 100 puntos si está a 0m, 0 puntos si está a 100m+
+
+      // Bonificación por tipo de detección (entry/exit son más confiables que pass_through)
+      const typeScore = (() => {
+        switch (detection.type) {
+          case "entry":
+            return 20;
+          case "exit":
+            return 18;
+          case "near_zone":
+            return 15;
+          case "pass_through":
+            return 10;
+          default:
+            return 0;
+        }
+      })();
+
+      // Puntuación total (prioriza cercanía al centro)
+      const totalScore = proximityScore + typeScore;
+
+      if (totalScore > bestScore) {
+        bestScore = totalScore;
+        bestDetection = detection;
+      }
+    });
+
+    return bestDetection;
+  };
+
+
+  const analyzeWithAdaptiveRadius = (
+    gpsPoints: GPSPoint[],
+    geofence: Geofence,
+    vehicleId: string
+  ): { detection: Detection | undefined; usedRadius: number } => {
+    const radiusSteps = [10, 20, 30, 40, 50, 100, 200, 300, 400, 500]; // Incrementos de 10m hasta máximo 500m
+
+    for (const radius of radiusSteps) {
+      const adaptedGeofence = { ...geofence, radius };
+      const detections = analyzeTrajectoryIntersection(
+        gpsPoints,
+        adaptedGeofence,
+        vehicleId
+      );
+      const bestDetection = getBestDetection(detections);
+
+      if (bestDetection) {
+        // Marcar que se usó un radio adaptado
+        const adaptedDetection = {
+          ...bestDetection,
+          geofence: adaptedGeofence,
+          adaptiveRadius: radius,
+        };
+        return { detection: adaptedDetection, usedRadius: radius };
+      }
+    }
+
+    return { detection: undefined, usedRadius: 10 };
+  };
+
+  const analyzeVehicle = async (
+    vehicle: VehicleSchedule
+  ): Promise<BatchAnalysisResult> => {
+    try {
+      const startDate = `${fecha}T${vehicle.startTime}`;
+      const endDate = `${fecha}T${vehicle.endTime}`;
+      const url = `https://villa.velsat.pe:8443/api/Reporting/general/${startDate}/${endDate}/${vehicle.vehicleId}/etudvrb`;
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        return {
+          vehicleId: vehicle.vehicleId,
+          codigo: vehicle.codigo,
+          fechaini: vehicle.startTime,
+          status: "error",
+          error: `HTTP ${response.status}`,
+          gpsPointsCount: 0,
+          detections: [],
+        };
+      }
+
+      const data: APIResponse = await response.json();
+
+      if (!data || !data.listaTablas || data.listaTablas.length === 0) {
+        return {
+          vehicleId: vehicle.vehicleId,
+          codigo: vehicle.codigo,
+          fechaini: vehicle.startTime,
+          status: "not_detected",
+          gpsPointsCount: 0,
+          detections: [],
+        };
+      }
+
+      const allDetections: Detection[] = [];
+      geofences.forEach((geofence) => {
+        const { detection } = analyzeWithAdaptiveRadius(
+          data.listaTablas,
+          geofence,
+          vehicle.vehicleId
+        );
+        if (detection) {
+          allDetections.push(detection);
+        }
+      });
+
+      if (allDetections.length > 0) {
+        const [startHours, startMinutes] = vehicle.startTime
+          .split(":")
+          .map(Number);
+
+        const dynamicMinutes =
+          selectedRoute === "5"
+            ? getDynamicMinutesForRoute5(startHours, startMinutes)
+            : getDynamicMinutesForRoute6(startHours, startMinutes);
+
+        allDetections.forEach((detection) => {
+          const geofenceIndex = geofences.findIndex(
+            (g) => g.id === detection.geofence.id
+          );
+
+          if (geofenceIndex !== -1 && geofenceIndex < dynamicMinutes.length) {
+            detection.endTime = calculateEndTime(
+              vehicle.startTime,
+              dynamicMinutes[geofenceIndex]
+            );
+          }
+        });
+      }
+
+      return {
+        vehicleId: vehicle.vehicleId,
+        codigo: vehicle.codigo,
+        fechaini: vehicle.startTime,
+        status: allDetections.length > 0 ? "detected" : "not_detected",
+        detections: allDetections,
+        gpsPointsCount: data.listaTablas.length,
+      };
+    } catch (err) {
+      return {
+        vehicleId: vehicle.vehicleId,
+        codigo: vehicle.codigo,
+        fechaini: vehicle.startTime,
+        status: "error",
+        error: err instanceof Error ? err.message : "Error desconocido",
+        gpsPointsCount: 0,
+        detections: [],
+      };
+    }
+  };
+
+  const analyzeBatchVehicles = async (): Promise<void> => {
+    if (vehicleSchedules.length === 0) {
+      setError("No hay vehículos cargados. Cargando datos...");
+      await loadVehicleSchedules();
+      return;
+    }
+
+    setBatchLoading(true);
+    setBatchResults([]);
+    setError(null);
+
+    try {
+      const results: BatchAnalysisResult[] = [];
+
+      for (let i = 0; i < vehicleSchedules.length; i += 3) {
+        const batch = vehicleSchedules.slice(i, i + 3);
+
+        const batchPromises = batch.map((vehicle) => analyzeVehicle(vehicle));
+        const batchResults = await Promise.all(batchPromises);
+
+        results.push(...batchResults);
+        setBatchResults([...results]);
+
+        if (i + 3 < vehicleSchedules.length) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error en análisis masivo");
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
+  const sendDataToAPI = async (): Promise<void> => {
+    if (batchResults.length === 0) {
+      setError("No hay datos para enviar. Realiza primero el análisis.");
+      toast.error("No hay datos para enviar. Realiza primero el análisis.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const apiData: APIDataItem[] = [];
+      const vehiclesWithDetections = batchResults.filter(
+        (r) => r.detections.length > 0
+      );
+
+      vehiclesWithDetections.forEach((result) => {
+        result.detections.forEach((detection) => {
+          const originalArrivalTime = detection.timestamp.split(" ")[1];
+          const adjustedArrivalTime = adjustTimeForLargeRadius(
+            originalArrivalTime,
+            detection.adaptiveRadius
+          );
+          apiData.push({
+            codasig: result.codigo.toString(),
+            deviceID: result.vehicleId,
+            nom_control: detection.geofence.name,
+            hora_inicio: result.fechaini,
+            hora_estimada: detection.endTime || "",
+            hora_llegada: adjustedArrivalTime,
+            volado: calculateTimeDifference(
+              detection.endTime || "",
+              adjustedArrivalTime
+            ),
+
+            fecha: fecha,
+          });
+        });
+      });
+
+      const response = await fetch(
+        "https://villa.velsat.pe:8443/api/Datero/EnvioGPS",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(apiData),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Error HTTP ${response.status}: ${response.statusText}`
+        );
+      }
+
+      const responseData = await response.json();
+
+      toast.success(
+        `Datos enviados exitosamente. ${apiData.length} registros enviados.`
+      );
+      console.log("Respuesta de la API:", responseData);
+
+      setTimeout(() => {
+        setOpen(false);
+        if (onDataSent) {
+          onDataSent();
+        }
+      }, 500);
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : "Error desconocido al enviar datos";
+      setError(`Error al enviar datos a la API: ${errorMessage}`);
+      console.error("Error enviando datos:", err);
+      toast.error(`❌ Error al enviar datos: ${errorMessage}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center justify-center rounded-md bg-green-700 px-4 py-[11px] text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-green-700/90 focus:outline-none dark:text-white"
+      >
+        Cargar Data Offline
+      </button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="w-[90vw] max-w-none border-0 shadow-2xl bg-white/95 backdrop-blur-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              CARGAR DATA OFFLINE : UNIDAD DE VILLA -{" "}
+              {ruta === "5"
+                ? "La Perla - San Juan"
+                : ruta === "6"
+                ? "San Juan - La Perla"
+                : `Ruta ${ruta}`}{" "}
+              ({fecha})
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* <div className="mt-4 p-3 bg-gray-100 rounded">
+            <p className="font-medium">Datos recibidos:</p>
+            <p className="text-sm">Ruta: {ruta}</p>
+            <p className="text-sm">Ruta: {fecha}</p>
+          </div> */}
+
+          <div>
+            <div className="p-0">
+              <div>
+                {/* Panel de Geocercas Fijas */}
+                <div className="bg-white rounded-xl shadow-lg p-2 mb-2">
+                  <h2 className="text-sm font-semibold mb-4 flex items-center gap-2">
+                    <MapPin className="text-green-600" />
+                    Geocercas Configuradas
+                  </h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {geofences.map((geofence) => (
+                      <div
+                        key={geofence.id}
+                        className="border border-gray-200 rounded-lg p-2 bg-green-50"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <h3 className="font-medium text-gray-800 text-xs">
+                            {geofence.name}
+                          </h3>
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                            35m
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-600 space-y-1">
+                          <div>Lat: {geofence.centerLat.toFixed(6)}</div>
+                          <div>Lon: {geofence.centerLon.toFixed(6)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Análisis Masivo */}
+                <div className="bg-white rounded-xl shadow-lg p-2 mb-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-sm font-semibold flex items-center">
+                      Análisis masivo del datero en modo apagado
+                    </h2>
+                  </div>
+
+                  {/* Guía paso a paso */}
+                  <div className="mb-4 p-2 bg-yellow-50 border-l-4 border-yellow-400 text-yellow-800 rounded text-sm">
+                    {batchResults.length === 0 && !batchLoading ? (
+                      <>
+                        👆 <strong>Paso 1:</strong> Haz clic en{" "}
+                        <span className="font-semibold text-purple-700">
+                          “Analizar datos”
+                        </span>{" "}
+                        para iniciar el análisis.
+                      </>
+                    ) : batchLoading ? (
+                      <>⏳ Análisis en progreso… por favor espera.</>
+                    ) : batchResults.length === vehicleSchedules.length ? (
+                      <>
+                        ✅ Análisis completado. 👇 <strong>Paso 2:</strong> Haz
+                        clic en{" "}
+                        <span className="font-semibold text-green-700">
+                          “Cargar datos al despacho”
+                        </span>{" "}
+                        para enviar los resultados.
+                      </>
+                    ) : (
+                      <>
+                        🔍 Analizando {batchResults.length} /{" "}
+                        {vehicleSchedules.length} datos…
+                      </>
+                    )}
+                  </div>
+
+                  {/* Botón Analizar */}
+                  <div className="flex gap-3 mb-2">
+                    <button
+                      onClick={analyzeBatchVehicles}
+                      disabled={
+                        batchLoading ||
+                        loadingSchedules ||
+                        vehicleSchedules.length === 0 ||
+                        batchResults.length === vehicleSchedules.length
+                      }
+                      className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2
+        ${
+          batchResults.length === vehicleSchedules.length
+            ? "bg-gray-400"
+            : "bg-purple-600 hover:bg-purple-700"
+        }
+        text-white
+      `}
+                    >
+                      {batchLoading || loadingSchedules ? (
+                        <RefreshCw className="animate-spin h-5 w-5" />
+                      ) : (
+                        <TrendingUp className="h-5 w-5" />
+                      )}
+                      {batchLoading
+                        ? "Analizando..."
+                        : loadingSchedules
+                        ? "Cargando vehículos..."
+                        : vehicleSchedules.length === 0
+                        ? "Sin vehículos"
+                        : `Analizar datos`}
+                    </button>
+                  </div>
+
+                  {/* Progreso */}
+                  {batchLoading && (
+                    <div className="mb-4 bg-blue-50 rounded-lg p-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-blue-800">
+                          Progreso del análisis
+                        </span>
+                        <span className="text-sm text-blue-600">
+                          {batchResults.length} / {vehicleSchedules.length}
+                        </span>
+                      </div>
+                      <div className="w-full bg-blue-200 rounded-full h-2">
+                        <div
+                          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                          style={{
+                            width: `${
+                              (batchResults.length / vehicleSchedules.length) *
+                              100
+                            }%`,
+                          }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Botón Cargar Datos */}
+                  <div className="flex justify-end">
+                    <button
+                      onClick={sendDataToAPI}
+                      disabled={
+                        loading ||
+                        batchLoading ||
+                        batchResults.length !== vehicleSchedules.length
+                      }
+                      className={`w-full px-4 py-4 rounded-lg text-sm font-medium flex items-center justify-center gap-2
+        ${
+          batchResults.length === vehicleSchedules.length
+            ? "bg-green-600 hover:bg-green-700"
+            : "bg-gray-400"
+        }
+        text-white
+      `}
+                    >
+                      {loading ? (
+                        <svg
+                          className="animate-spin h-4 w-4 text-white"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8v8H4z"
+                          />
+                        </svg>
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
+                      {loading ? "Enviando..." : "CARGAR DATOS AL DESPACHO"}
+                    </button>
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+                    <div className="flex items-center gap-2 text-red-800">
+                      <AlertTriangle className="h-5 w-5" />
+                      <span className="font-medium">Error:</span> {error}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <DialogClose asChild>
+              <button className="px-4 py-2 rounded-md bg-red-600 text-gray-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2">
+                Cerrar
+              </button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
