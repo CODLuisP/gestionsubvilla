@@ -435,7 +435,7 @@ export default function Page() {
             Seleccione una fecha y presione Buscar
           </h3>
           <p className="text-gray-500 dark:text-gray-400 text-center">
-            O use el botón "Cargar Voladas" para datos offline
+            O use el botón &quot;Cargar voladas&quot; para datos offline
           </p>
         </div>
       )}
