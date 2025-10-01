@@ -3,57 +3,34 @@ import React, { useState } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
-import { FileSpreadsheet, FileText, Search, X, Loader2 } from "lucide-react";
+import { FileSpreadsheet, FileText, Search, X } from "lucide-react";
 import DataOffLineGps from "./DataOffLineGps";
 
-const headersRuta5 = [
+const headersRuta25 = [
   "Unidad",
   "Hora Inicio",
   "Hora Registro",
-  "VENEZUELA",
-  "GARZON",
-  "OBRERO",
-  "AV SAN JUAN",
-  "MADRID",
+  "PACÍFICO",
+  "GALENA",
+  "CVA. ESPERANZA",
+  "PARADERO 15",
+  "CVA. ESPERANZA",
   "CT",
-  "GRIFO MILAGRO",
+  "FERRETERÍA",
+  "MIYASHIRO",
   "Conductor",
   "Total",
 ];
 
-const headersRuta6 = [
-  "Unidad",
-  "Hora Inicio",
-  "Hora Registro",
-  "PACIFICO",
+const controlesRuta25 = [
+  "PACÍFICO",
+  "GALENA",
+  "CVA. ESPERANZA",
+  "PARADERO 15",
+  "CVA. ESPERANZA",
   "CT",
-  "MADRID",
-  "ARRIOLA",
-  "TRANSITO",
-  "BOLIVAR",
-  "INSURGENTES",
-  "Conductor",
-  "Total",
-];
-
-const controlesRuta5 = [
-  "VENEZUELA",
-  "GARZON",
-  "OBRERO",
-  "AV SAN JUAN",
-  "MADRID",
-  "CT",
-  "GRIFO MILAGRO",
-];
-
-const controlesRuta6 = [
-  "PACIFICO",
-  "CT",
-  "MADRID",
-  "ARRIOLA",
-  "TRANSITO",
-  "BOLIVAR",
-  "INSURGENTES",
+  "FERRETERÍA",
+  "MIYASHIRO",
 ];
 
 interface Control {
@@ -73,9 +50,7 @@ interface Despacho {
 }
 
 export default function Page() {
-  const [selectedRoute, setSelectedRoute] = useState("5");
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
+  const [selectedRoute] = useState("25");
 
   const getTodayLocal = () => {
     const now = new Date();
@@ -89,11 +64,10 @@ export default function Page() {
   const [date, setDate] = useState(today);
 
   const [searchText, setSearchText] = useState("");
-  const [activeHeaders, setActiveHeaders] = useState(headersRuta5);
   const [rows, setRows] = useState<(string | string[])[][]>([]);
-  const [subdividedColumns, setSubdividedColumns] = useState<number[]>([
-    3, 4, 5, 6, 7, 8, 9,
-  ]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const subdividedColumns = [3, 4, 5, 6, 7, 8, 9, 10];
 
   // Función para verificar si una fila tiene al menos una hora en los controles
   const hasControlTimes = (row: (string | string[])[]) => {
@@ -102,7 +76,6 @@ export default function Page() {
 
     return visibleData.some((cell, index) => {
       if (subdividedColumns.includes(index) && Array.isArray(cell)) {
-        // Verificar si hay hora estimada o hora de llegada
         return (
           (cell[0] && cell[0].trim() !== "") ||
           (cell[1] && cell[1].trim() !== "")
@@ -115,7 +88,7 @@ export default function Page() {
   const exportExcel = () => {
     const headerRow: string[] = [];
 
-    activeHeaders.forEach((header, index) => {
+    headersRuta25.forEach((header, index) => {
       if (subdividedColumns.includes(index)) {
         headerRow.push(`${header} - Estimada`);
         headerRow.push(`${header} - Llegada`);
@@ -140,7 +113,6 @@ export default function Page() {
       visibleData.forEach((cell, i) => {
         if (subdividedColumns.includes(i) && Array.isArray(cell)) {
           const voladoRaw = cell[2]?.trim() || "0";
-          // No sumar si es "+0" (que viene de valores "seg")
           if (voladoRaw !== "+0") {
             const volado = parseInt(voladoRaw);
             if (!isNaN(volado) && volado > 0) total += volado;
@@ -156,7 +128,6 @@ export default function Page() {
         }
       });
 
-      // Conductor
       if (typeof conductorCell === "string") {
         rowData.push(conductorCell);
       } else {
@@ -218,22 +189,10 @@ export default function Page() {
     document.body.removeChild(container);
   };
 
+  // Función para buscar despachos por fecha
   const handleSearch = async () => {
     setIsLoading(true);
     setHasSearched(true);
-
-    let headers = headersRuta5;
-    let controles = controlesRuta5;
-    let newSubdividedColumns = [3, 4, 5, 6, 7, 8, 9];
-
-    if (selectedRoute === "6") {
-      headers = headersRuta6;
-      controles = controlesRuta6;
-      newSubdividedColumns = [3, 4, 5, 6, 7, 8, 9];
-    }
-
-    setActiveHeaders(headers);
-    setSubdividedColumns(newSubdividedColumns);
 
     try {
       const url = `https://villa.velsat.pe:8443/api/Datero/control/${date}/${selectedRoute}`;
@@ -253,7 +212,7 @@ export default function Page() {
         const base = [item.deviceid, item.hora_inicio, item.hora_registro];
 
         const controlMap: Record<string, string[]> = {};
-        controles.forEach((control) => {
+        controlesRuta25.forEach((control) => {
           controlMap[control.toUpperCase()] = ["", "", ""];
         });
 
@@ -264,13 +223,10 @@ export default function Page() {
             if (c.volado) {
               const voladoStr = c.volado.trim();
               if (voladoStr.toLowerCase().includes("m")) {
-                // Si contiene "m" (como "5min"), procesar normalmente
                 voladoNumerico = voladoStr.match(/^[+-]?\d+/)?.[0] || "0";
               } else if (voladoStr.toLowerCase().endsWith("seg")) {
-                // Si NO contiene "m" pero termina en "seg", mostrar +0
                 voladoNumerico = "+0";
               } else {
-                // Otros casos, procesar normalmente
                 voladoNumerico = voladoStr.match(/^[+-]?\d+/)?.[0] || "0";
               }
             } else {
@@ -284,9 +240,9 @@ export default function Page() {
           }
         });
 
-        const controlValues = headers
+        const controlValues = headersRuta25
           .map((header, i) =>
-            newSubdividedColumns.includes(i) ? controlMap[header] : null
+            subdividedColumns.includes(i) ? controlMap[header.toUpperCase()] : null
           )
           .filter((v) => v !== null) as string[][];
 
@@ -302,11 +258,11 @@ export default function Page() {
     }
   };
 
-  const handleDataSent = () => {
-    console.log("Datos enviados exitosamente, actualizando tabla...");
-    handleSearch();
+  // Callback cuando se envían datos desde DataOffLineGps
+  const handleDataSent = async () => {
+    console.log("Datos enviados exitosamente desde DataOffLineGps, recargando tabla...");
+    await handleSearch();
   };
-
 
   const filteredRows = rows.filter((row) => {
     return row.some((cell, index) => {
@@ -321,10 +277,7 @@ export default function Page() {
     });
   });
 
-  // Nueva variable para determinar si hay datos cargados
   const hasLoadedData = hasSearched && rows.length > 0;
-
-  // Variable para determinar si hay resultados de búsqueda
   const hasSearchResults = filteredRows.length > 0;
 
   return (
@@ -332,82 +285,94 @@ export default function Page() {
       {/* Cabecera */}
       <div className="border border-gray-800 p-4 sm:p-2">
         <h2 className="text-center text-blue-800 font-semibold text-lg mb-4 dark:text-gray-100">
-          Búsqueda de Despacho
+          Control de Despacho
         </h2>
 
-<div className="flex flex-col xl:flex-row gap-4 xl:gap-6 items-center justify-center">
-  {/* Ruta */}
-  <div className="w-full max-w-md xl:max-w-none xl:w-auto">
-    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 sm:w-28 xl:w-22 flex-shrink-0">
-        Seleccionar Ruta:
-      </label>
-      <select
-        className="w-full sm:min-w-[250px] xl:min-w-[230px] border border-gray-300 dark:border-gray-600 rounded px-3 py-2 text-sm bg-white dark:bg-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 shadow-sm hover:shadow-md dark:text-gray-300"
-        value={selectedRoute}
-        onChange={(e) => setSelectedRoute(e.target.value)}
-        disabled={isLoading}
-      >
-        <option value="5">1234 - La Perla - San Juan (A)</option>
-        <option value="6">1234 - San Juan - La Perla (B)</option>
-      </select>
-    </div>
-  </div>
+        <div className="flex flex-col xl:flex-row gap-4 xl:gap-6 items-center justify-center">
+          {/* Ruta */}
+          <div className="w-full max-w-md xl:max-w-none xl:w-auto">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 sm:w-28 xl:w-22 flex-shrink-0">
+                Ruta:
+              </label>
+              <div className="w-full sm:min-w-[250px] xl:min-w-[230px] border border-gray-300 dark:border-gray-600 rounded px-3 py-2 text-sm bg-gray-100 dark:bg-slate-600 text-gray-700 dark:text-gray-300">
+                1384 - Chorrillos - VMT
+              </div>
+            </div>
+          </div>
 
-  {/* Fecha */}
-  <div className="w-full max-w-md xl:max-w-none xl:w-auto">
-    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 sm:w-28 xl:w-30 flex-shrink-0">
-        Fecha Búsqueda:
-      </label>
-      <input
-        type="date"
-        value={date}
-        onChange={(e) => setDate(e.target.value)}
-        className="w-full sm:min-w-[200px] xl:min-w-[150px] border border-gray-300 dark:border-gray-600 rounded px-3 py-2 text-sm bg-white dark:bg-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 shadow-sm hover:shadow-md dark:text-gray-300"
-        disabled={isLoading}
-      />
-    </div>
-  </div>
+          {/* Fecha */}
+          <div className="w-full max-w-md xl:max-w-none xl:w-auto">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 sm:w-28 xl:w-30 flex-shrink-0">
+                Fecha:
+              </label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full sm:min-w-[200px] xl:min-w-[150px] border border-gray-300 dark:border-gray-600 rounded px-3 py-2 text-sm bg-white dark:bg-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 shadow-sm hover:shadow-md dark:text-gray-300"
+                disabled={isLoading}
+              />
+            </div>
+          </div>
 
-  {/* Botón */}
-  <div className="w-full max-w-md xl:max-w-none xl:w-auto flex justify-center xl:justify-start mt-2 xl:mt-0">
-    <button
-      onClick={handleSearch}
-      disabled={isLoading}
-      className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-medium px-6 py-2 rounded flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl"
-    >
-      {isLoading ? (
-        <>
-          <Loader2 className="w-4 h-4 animate-spin" />
-          Cargando...
-        </>
-      ) : (
-        <>
-          <Search className="w-4 h-4" />
-          Buscar
-        </>
-      )}
-    </button>
-  </div>
+          {/* Botón Buscar */}
+          <div className="w-full max-w-md xl:max-w-none xl:w-auto flex justify-center xl:justify-start mt-2 xl:mt-0">
+            <button
+              onClick={handleSearch}
+              disabled={isLoading}
+              className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-medium px-6 py-2 rounded flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+            >
+              {isLoading ? (
+                <>
+                  <svg
+                    className="animate-spin h-4 w-4 text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8v8H4z"
+                    />
+                  </svg>
+                  Cargando...
+                </>
+              ) : (
+                <>
+                  <Search className="w-4 h-4" />
+                  Buscar
+                </>
+              )}
+            </button>
+          </div>
 
-  <div className="w-full xl:w-auto flex justify-center items-center">
-    <DataOffLineGps
-      ruta={selectedRoute}
-      fecha={date}
-      onDataSent={handleDataSent}
-    />
-  </div>
-</div>
-
-
+          {/* Componente DataOffLineGps */}
+          <div className="w-full xl:w-auto flex justify-center items-center">
+            <DataOffLineGps
+              ruta={selectedRoute}
+              fecha={date}
+              onDataSent={handleDataSent}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Sección de búsqueda y botones - Solo mostrar si hay datos cargados */}
+      {/* Sección de búsqueda y botones */}
       {!isLoading && hasLoadedData && (
         <div className="space-y-2">
           <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
-            {/* BUSCAR (izquierda) */}
+            {/* BUSCAR */}
             <div className="relative flex items-center w-[390px]">
               <Search className="absolute left-3 w-4 h-4 text-gray-400" />
               <input
@@ -427,7 +392,7 @@ export default function Page() {
               )}
             </div>
 
-            {/* BOTONES DESCARGA (derecha) */}
+            {/* BOTONES DESCARGA */}
             <div className="flex items-center gap-3">
               <button
                 onClick={exportExcel}
@@ -446,7 +411,6 @@ export default function Page() {
             </div>
           </div>
 
-          {/* Mensaje cuando no hay resultados de búsqueda pero sí hay datos */}
           {searchText && !hasSearchResults && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
               <p className="text-yellow-800">
@@ -463,27 +427,49 @@ export default function Page() {
         </div>
       )}
 
-      {/* Mensaje inicial - Solo mostrar si no se ha buscado */}
+      {/* Mensaje inicial */}
       {!isLoading && !hasSearched && (
         <div className="flex flex-col items-center justify-center py-12 space-y-4">
           <div className="text-6xl text-gray-400">🔍</div>
           <h3 className="text-lg font-medium text-gray-600 dark:text-gray-300">
-            Seleccione una ruta, fecha y presione en Buscar
+            Seleccione una fecha y presione Buscar
           </h3>
+          <p className="text-gray-500 dark:text-gray-400 text-center">
+            O use el botón "Cargar Voladas" para datos offline
+          </p>
         </div>
       )}
 
       {/* Loading State */}
       {isLoading && (
         <div className="flex flex-col items-center justify-center py-12 space-y-4">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          <svg
+            className="animate-spin h-8 w-8 text-blue-600"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8v8H4z"
+            />
+          </svg>
           <p className="text-gray-600 dark:text-gray-300">
             Cargando despachos...
           </p>
         </div>
       )}
 
-      {/* Mensaje cuando no hay datos del API */}
+      {/* Mensaje sin datos */}
       {!isLoading && hasSearched && rows.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 space-y-4">
           <div className="text-6xl text-gray-300">📋</div>
@@ -491,19 +477,18 @@ export default function Page() {
             No se encontraron despachos
           </h3>
           <p className="text-gray-500 dark:text-gray-400 text-center">
-            No hay despachos registrados para la fecha y ruta seleccionada.
+            No hay despachos registrados para la fecha seleccionada.
           </p>
         </div>
       )}
 
-      {/* Tabla - Solo mostrar si hay datos cargados */}
+      {/* Tabla */}
       {!isLoading && hasLoadedData && (
         <div id="tabla-pdf" className="overflow-x-auto">
           <table className="min-w-full border text-sm text-center border-collapse">
             <thead>
-              {/* CABECERAS */}
               <tr className="bg-slate-200">
-                {activeHeaders.map((header, index) => {
+                {headersRuta25.map((header, index) => {
                   if (subdividedColumns.includes(index)) {
                     return (
                       <th
@@ -535,13 +520,11 @@ export default function Page() {
                 const visibleData = row.slice(0, conductorIndex);
                 const conductor = row[conductorIndex];
                 const total = visibleData.reduce((acc, cell, index) => {
-                  
                   if (
                     subdividedColumns.includes(index) &&
                     Array.isArray(cell)
                   ) {
                     const raw = (cell[2] || "0").trim();
-                    // No sumar si es "+0" (que viene de valores "seg")
                     if (raw === "+0") return acc;
                     const value = parseInt(raw);
                     if (!isNaN(value) && value > 0) acc += value;
@@ -549,7 +532,6 @@ export default function Page() {
                   return acc;
                 }, 0);
 
-                // Verificar si esta fila tiene horas en los controles
                 const hasHours = hasControlTimes(row);
 
                 return (
@@ -558,18 +540,15 @@ export default function Page() {
                       <React.Fragment key={cellIndex}>
                         {subdividedColumns.includes(cellIndex) ? (
                           (cell as string[]).map((value, i) => {
-                            // Definir colores: grises si no hay horas, normales si las hay
                             let bgColor = "";
                             if (hasHours) {
-                              // Colores normales
                               bgColor =
                                 i === 0
-                                  ? "bg-[#fdecc1]" // Estimada
+                                  ? "bg-[#fdecc1]"
                                   : i === 1
-                                  ? "bg-[#cbfdc1]" // Llegada
-                                  : "bg-[#c1fdeb]"; // Volado
+                                  ? "bg-[#cbfdc1]"
+                                  : "bg-[#c1fdeb]";
                             } else {
-                              // Colores grises
                               bgColor = "bg-gray-200";
                             }
 
@@ -590,11 +569,9 @@ export default function Page() {
                       </React.Fragment>
                     ))}
 
-                    {/* Conductor */}
                     <td className="border border-gray-500 px-2 py-1 text-xs text-center dark:text-gray-300">
                       {conductor}
                     </td>
-                    {/* Total */}
                     <td className="border border-gray-500 px-2 py-1 text-xs text-center dark:text-gray-300">
                       {total > 0 ? `+${total}` : total < 0 ? total : "+0"}
                     </td>
