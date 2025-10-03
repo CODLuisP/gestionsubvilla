@@ -865,7 +865,7 @@ const getDynamicMinutesForRoute25 = (
       });
 
       const response = await fetch(
-        "https://villa.velsat.pe:8443/api/Datero/EnvioGPS",
+        "https://villa.velsat.pe:8443/api/Datero/EnvioGPS/etudvrb",
         {
           method: "POST",
           headers: {

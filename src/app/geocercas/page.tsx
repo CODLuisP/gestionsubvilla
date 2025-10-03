@@ -960,7 +960,7 @@ const apiData: APIDataItem[] = [];
       });
     });
 
-    const response = await fetch('https://villa.velsat.pe:8443/api/Datero/EnvioGPS', {
+    const response = await fetch('https://villa.velsat.pe:8443/api/Datero/EnvioGPS/etudvrb', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
