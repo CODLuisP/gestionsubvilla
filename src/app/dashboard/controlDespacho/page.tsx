@@ -12,7 +12,7 @@ const headersRuta25 = [
   "Hora Registro",
   "PACÍFICO",
   "GALENA",
-  "CVA. ESPERANZA",
+  "CVA. ESPERANZA I",
   "PARADERO 15",
   "CVA. ESPERANZA",
   "CT",
@@ -25,7 +25,7 @@ const headersRuta25 = [
 const controlesRuta25 = [
   "PACÍFICO",
   "GALENA",
-  "CVA. ESPERANZA",
+  "CVA. ESPERANZA I",
   "PARADERO 15",
   "CVA. ESPERANZA",
   "CT",
@@ -189,74 +189,137 @@ export default function Page() {
     document.body.removeChild(container);
   };
 
-  // Función para buscar despachos por fecha
-  const handleSearch = async () => {
-    setIsLoading(true);
-    setHasSearched(true);
+const handleSearch = async () => {
+  setIsLoading(true);
+  setHasSearched(true);
 
-    try {
-      const url = `https://villa.velsat.pe:8443/api/Datero/control/${date}/${selectedRoute}`;
-      const response = await fetch(url);
-      if (!response.ok)
-        throw new Error(`Error ${response.status}: ${response.statusText}`);
-      const result = await response.json();
+  try {
+    const url = `https://villa.velsat.pe:8443/api/Datero/control/${date}/${selectedRoute}`;
+    const response = await fetch(url);
+    if (!response.ok)
+      throw new Error(`Error ${response.status}: ${response.statusText}`);
+    const result = await response.json();
 
-      if (result.data.length === 0) {
-        setRows([]);
-        return;
-      }
+    if (result.data.length === 0) {
+      setRows([]);
+      return;
+    }
 
-      result.data.sort((a: Despacho, b: Despacho) => b.codasig - a.codasig);
+    result.data.sort((a: Despacho, b: Despacho) => b.codasig - a.codasig);
 
-      const newRows = result.data.map((item: Despacho) => {
-        const base = [item.deviceid, item.hora_inicio, item.hora_registro];
+    const newRows = result.data.map((item: Despacho) => {
+      const base = [item.deviceid, item.hora_inicio, item.hora_registro];
 
-        const controlMap: Record<string, string[]> = {};
-        controlesRuta25.forEach((control) => {
-          controlMap[control.toUpperCase()] = ["", "", ""];
-        });
-
-        item.controles.forEach((c: Control) => {
-          const nom = c.nom_control?.toUpperCase()?.trim();
-          if (nom && controlMap[nom]) {
-            let voladoNumerico = "0";
-            if (c.volado) {
-              const voladoStr = c.volado.trim();
-              if (voladoStr.toLowerCase().includes("m")) {
-                voladoNumerico = voladoStr.match(/^[+-]?\d+/)?.[0] || "0";
-              } else if (voladoStr.toLowerCase().endsWith("seg")) {
-                voladoNumerico = "+0";
-              } else {
-                voladoNumerico = voladoStr.match(/^[+-]?\d+/)?.[0] || "0";
-              }
-            } else {
-              voladoNumerico = "0";
-            }
-            controlMap[nom] = [
-              c.hora_estimada || "",
-              c.hora_llegada || "",
-              voladoNumerico,
-            ];
-          }
-        });
-
-        const controlValues = headersRuta25
-          .map((header, i) =>
-            subdividedColumns.includes(i) ? controlMap[header.toUpperCase()] : null
-          )
-          .filter((v) => v !== null) as string[][];
-
-        return [...base, ...controlValues, item.nombreConductor];
+      const controlMap: Record<string, string[]> = {};
+      controlesRuta25.forEach((control) => {
+        controlMap[control.toUpperCase()] = ["", "", ""];
       });
 
-      setRows(newRows);
-    } catch (error) {
-      console.error("Error al obtener datos:", error);
-      setRows([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      // Procesar todos los controles normalmente
+      item.controles.forEach((c: Control) => {
+        const nom = c.nom_control?.toUpperCase()?.trim();
+        if (nom && controlMap[nom]) {
+          let voladoNumerico = "0";
+          if (c.volado) {
+            const voladoStr = c.volado.trim();
+            if (voladoStr.toLowerCase().includes("m")) {
+              voladoNumerico = voladoStr.match(/^[+-]?\d+/)?.[0] || "0";
+            } else if (voladoStr.toLowerCase().endsWith("seg")) {
+              voladoNumerico = "+0";
+            } else {
+              voladoNumerico = voladoStr.match(/^[+-]?\d+/)?.[0] || "0";
+            }
+          } else {
+            voladoNumerico = "0";
+          }
+          controlMap[nom] = [
+            c.hora_estimada || "",
+            c.hora_llegada || "",
+            voladoNumerico,
+          ];
+        }
+      });
+
+      // Función para convertir hora a segundos totales del día
+      const horaASegundos = (hora: string): number | null => {
+        if (!hora || hora.trim() === "") return null;
+        
+        const partes = hora.split(":");
+        if (partes.length < 2) return null;
+        
+        const horas = parseInt(partes[0]);
+        const minutos = parseInt(partes[1]);
+        const segundos = partes.length === 3 ? parseInt(partes[2]) : 0;
+        
+        if (isNaN(horas) || isNaN(minutos) || isNaN(segundos)) return null;
+        
+        return horas * 3600 + minutos * 60 + segundos;
+      };
+
+      // **LÓGICA: Verificar PARADERO 15**
+      const paradero15 = controlMap["PARADERO 15"];
+      const paradero15HoraEstimada = paradero15[0]?.trim() || "";
+      const paradero15HoraLlegada = paradero15[1]?.trim() || "";
+      
+      const paradero15Vacio = 
+        paradero15HoraEstimada === "" && paradero15HoraLlegada === "";
+
+      if (paradero15Vacio) {
+        // Si PARADERO 15 está vacío, limpiar controles posteriores
+        const controlesALimpiar = [
+          "CVA. ESPERANZA",
+          "CT",
+          "FERRETERÍA",
+          "MIYASHIRO"
+        ];
+        
+        controlesALimpiar.forEach(control => {
+          controlMap[control.toUpperCase()] = ["", "", ""];
+        });
+      } else {
+        // Si PARADERO 15 tiene datos, usar su hora de LLEGADA (verde) como referencia
+        const paradero15Segundos = horaASegundos(paradero15HoraLlegada);
+
+        if (paradero15Segundos !== null) {
+          const controlesAEvaluar = [
+            "CVA. ESPERANZA",
+            "CT",
+            "FERRETERÍA",
+            "MIYASHIRO"
+          ];
+
+          controlesAEvaluar.forEach(control => {
+            const controlData = controlMap[control.toUpperCase()];
+            const controlHoraLlegada = controlData[1]?.trim() || "";
+            
+            // Usar la hora de LLEGADA (verde) del control para comparar
+            const controlSegundos = horaASegundos(controlHoraLlegada);
+
+            // Si el control no tiene hora de llegada válida o NO es mayor a PARADERO 15, limpiarlo
+            if (controlSegundos === null || controlSegundos <= paradero15Segundos) {
+              controlMap[control.toUpperCase()] = ["", "", ""];
+            }
+          });
+        }
+      }
+
+      const controlValues = headersRuta25
+        .map((header, i) =>
+          subdividedColumns.includes(i) ? controlMap[header.toUpperCase()] : null
+        )
+        .filter((v) => v !== null) as string[][];
+
+      return [...base, ...controlValues, item.nombreConductor];
+    });
+
+    setRows(newRows);
+  } catch (error) {
+    console.error("Error al obtener datos:", error);
+    setRows([]);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // Callback cuando se envían datos desde DataOffLineGps
   const handleDataSent = async () => {

@@ -351,7 +351,7 @@ const getDynamicMinutesForRoute25 = (
         },
         {
           id: 3,
-          name: "CVA. ESPERANZA",
+          name: "CVA. ESPERANZA I",
           centerLat: -12.180301,
           centerLon: -76.943743,
           radius: 10,
