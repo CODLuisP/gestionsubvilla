@@ -194,7 +194,7 @@ const handleSearch = async () => {
   setHasSearched(true);
 
   try {
-    const url = `https://villa.velsat.pe:8443/api/Datero/control/${date}/${selectedRoute}`;
+    const url = `https://villa.velsat.pe:8443/api/Datero/control/${date}/${selectedRoute}/etudvrb`;
     const response = await fetch(url);
     if (!response.ok)
       throw new Error(`Error ${response.status}: ${response.statusText}`);
