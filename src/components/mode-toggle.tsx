@@ -22,6 +22,8 @@ export function ModeToggle() {
         <Sun className="h-4 w-4" />
         <span className="sr-only">Cambiar tema</span>
       </Button>
+
+      
     )
   }
 
