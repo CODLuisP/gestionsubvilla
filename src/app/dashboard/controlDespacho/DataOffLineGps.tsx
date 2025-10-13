@@ -503,46 +503,6 @@ export default function DataOffLineGps({
     return R * c;
   };
 
-  const distanceFromPointToLine = (
-    px: number,
-    py: number,
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number
-  ): number => {
-    const centerLat = (y1 + y2) / 2;
-    const metersPerDegreeLat = 111000;
-    const metersPerDegreeLon = 111000 * Math.cos((centerLat * Math.PI) / 180);
-
-    const pxMeters = px * metersPerDegreeLon;
-    const pyMeters = py * metersPerDegreeLat;
-    const x1Meters = x1 * metersPerDegreeLon;
-    const y1Meters = y1 * metersPerDegreeLat;
-    const x2Meters = x2 * metersPerDegreeLon;
-    const y2Meters = y2 * metersPerDegreeLat;
-
-    const A = pxMeters - x1Meters;
-    const B = pyMeters - y1Meters;
-    const C = x2Meters - x1Meters;
-    const D = y2Meters - y1Meters;
-
-    const dot = A * C + B * D;
-    const lenSq = C * C + D * D;
-
-    if (lenSq === 0) return Math.sqrt(A * A + B * B);
-
-    let param = dot / lenSq;
-    param = Math.max(0, Math.min(1, param));
-
-    const xx = x1Meters + param * C;
-    const yy = y1Meters + param * D;
-
-    const dx = pxMeters - xx;
-    const dy = pyMeters - yy;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
 const analyzeTrajectoryIntersection = (
   gpsPoints: GPSPoint[],
   geofence: Geofence,
@@ -604,51 +564,6 @@ const analyzeTrajectoryIntersection = (
   
   return detections;
 };
-
-  const getBestDetection = (detections: Detection[]): Detection | undefined => {
-    if (detections.length === 0) return undefined;
-    if (detections.length === 1) return detections[0];
-
-    let bestDetection = detections[0];
-    let bestScore = -1;
-
-    detections.forEach((detection) => {
-      // NUEVA LÓGICA: Calcular qué tan cerca está del centro de la geocerca
-      const minDistanceToCenter = Math.min(
-        detection.distanceFrom,
-        detection.distanceTo
-      );
-
-      // Puntuación basada en cercanía al centro (mientras más cerca, mejor puntuación)
-      const proximityScore = Math.max(0, 100 - minDistanceToCenter); // 100 puntos si está a 0m, 0 puntos si está a 100m+
-
-      // Bonificación por tipo de detección (entry/exit son más confiables que pass_through)
-      const typeScore = (() => {
-        switch (detection.type) {
-          case "entry":
-            return 20;
-          case "exit":
-            return 18;
-          case "near_zone":
-            return 15;
-          case "pass_through":
-            return 10;
-          default:
-            return 0;
-        }
-      })();
-
-      // Puntuación total (prioriza cercanía al centro)
-      const totalScore = proximityScore + typeScore;
-
-      if (totalScore > bestScore) {
-        bestScore = totalScore;
-        bestDetection = detection;
-      }
-    });
-
-    return bestDetection;
-  };
 
 const analyzeWithAdaptiveRadius = (
   gpsPoints: GPSPoint[],
