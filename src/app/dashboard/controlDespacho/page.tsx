@@ -20,6 +20,7 @@ const headersRuta25 = [
   "MIYASHIRO",
   "Conductor",
   "Total",
+  "Acción"
 ];
 
 const controlesRuta25 = [
@@ -194,7 +195,7 @@ const handleSearch = async () => {
   setHasSearched(true);
 
   try {
-    const url = `https://villa.velsat.pe:8443/api/Datero/control/${date}/${selectedRoute}/etudvrb`;
+    const url = `https://villa.velsat.pe/api/Datero/controlEdu/${date}/${selectedRoute}/etudvrb`;
     const response = await fetch(url);
     if (!response.ok)
       throw new Error(`Error ${response.status}: ${response.statusText}`);
@@ -550,98 +551,109 @@ const handleSearch = async () => {
         <div id="tabla-pdf" className="overflow-x-auto">
           <table className="min-w-full border text-sm text-center border-collapse">
             <thead>
-              <tr className="bg-slate-200">
-                {headersRuta25.map((header, index) => {
-                  if (subdividedColumns.includes(index)) {
-                    return (
-                      <th
-                        key={index}
-                        colSpan={3}
-                        className="border border-gray-500 px-3 py-2 font-bold text-[11px] uppercase text-center text-black"
-                      >
-                        {header}
-                      </th>
-                    );
-                  } else {
-                    return (
-                      <th
-                        key={index}
-                        rowSpan={2}
-                        className="border border-gray-500 px-3 py-2 font-bold text-[11px] align-middle text-center text-black"
-                      >
-                        {header}
-                      </th>
-                    );
-                  }
-                })}
-              </tr>
-            </thead>
+  <tr className="bg-slate-200">
+    {headersRuta25.map((header, index) => {
+      if (subdividedColumns.includes(index)) {
+        return (
+          <th
+            key={index}
+            colSpan={3}
+            className="border border-gray-500 px-3 py-2 font-bold text-[11px] uppercase text-center text-black"
+          >
+            {header}
+          </th>
+        );
+      } else {
+        return (
+          <th
+            key={index}
+            rowSpan={2}
+            className="border border-gray-500 px-3 py-2 font-bold text-[11px] align-middle text-center text-black"
+          >
+            {header}
+          </th>
+        );
+      }
+    })}
+  </tr>
+</thead>
 
             <tbody>
-              {filteredRows.map((row, rowIndex) => {
-                const conductorIndex = row.length - 1;
-                const visibleData = row.slice(0, conductorIndex);
-                const conductor = row[conductorIndex];
-                const total = visibleData.reduce((acc, cell, index) => {
-                  if (
-                    subdividedColumns.includes(index) &&
-                    Array.isArray(cell)
-                  ) {
-                    const raw = (cell[2] || "0").trim();
-                    if (raw === "+0") return acc;
-                    const value = parseInt(raw);
-                    if (!isNaN(value) && value > 0) acc += value;
-                  }
-                  return acc;
-                }, 0);
+  {filteredRows.map((row, rowIndex) => {
+    const conductorIndex = row.length - 1;
+    const visibleData = row.slice(0, conductorIndex);
+    const conductor = row[conductorIndex];
+    const deviceId = row[0]; // ⬅️ La primera columna es la unidad
+    
+    const total = visibleData.reduce((acc, cell, index) => {
+      if (subdividedColumns.includes(index) && Array.isArray(cell)) {
+        const raw = (cell[2] || "0").trim();
+        if (raw === "+0") return acc;
+        const value = parseInt(raw);
+        if (!isNaN(value) && value > 0) acc += value;
+      }
+      return acc;
+    }, 0);
 
-                const hasHours = hasControlTimes(row);
+    const hasHours = hasControlTimes(row);
+
+    return (
+      <tr key={rowIndex} className={"bg-gray"}>
+        {visibleData.map((cell, cellIndex) => (
+          <React.Fragment key={cellIndex}>
+            {subdividedColumns.includes(cellIndex) ? (
+              (cell as string[]).map((value, i) => {
+                let bgColor = "";
+                if (hasHours) {
+                  bgColor =
+                    i === 0
+                      ? "bg-[#fdecc1]"
+                      : i === 1
+                      ? "bg-[#cbfdc1]"
+                      : "bg-[#c1fdeb]";
+                } else {
+                  bgColor = "bg-gray-200";
+                }
 
                 return (
-                  <tr key={rowIndex} className={"bg-gray"}>
-                    {visibleData.map((cell, cellIndex) => (
-                      <React.Fragment key={cellIndex}>
-                        {subdividedColumns.includes(cellIndex) ? (
-                          (cell as string[]).map((value, i) => {
-                            let bgColor = "";
-                            if (hasHours) {
-                              bgColor =
-                                i === 0
-                                  ? "bg-[#fdecc1]"
-                                  : i === 1
-                                  ? "bg-[#cbfdc1]"
-                                  : "bg-[#c1fdeb]";
-                            } else {
-                              bgColor = "bg-gray-200";
-                            }
-
-                            return (
-                              <td
-                                key={`${cellIndex}-${i}`}
-                                className={`border border-gray-500 py-1 text-xs text-center ${bgColor} text-gray-800`}
-                              >
-                                {value}
-                              </td>
-                            );
-                          })
-                        ) : (
-                          <td className="border border-gray-500 px-2 py-1 text-xs text-center dark:text-gray-300">
-                            {cell}
-                          </td>
-                        )}
-                      </React.Fragment>
-                    ))}
-
-                    <td className="border border-gray-500 px-2 py-1 text-xs text-center dark:text-gray-300">
-                      {conductor}
-                    </td>
-                    <td className="border border-gray-500 px-2 py-1 text-xs text-center dark:text-gray-300">
-                      {total > 0 ? `+${total}` : total < 0 ? total : "+0"}
-                    </td>
-                  </tr>
+                  <td
+                    key={`${cellIndex}-${i}`}
+                    className={`border border-gray-500 py-1 text-xs text-center ${bgColor} text-gray-800`}
+                  >
+                    {value}
+                  </td>
                 );
-              })}
-            </tbody>
+              })
+            ) : (
+              <td className="border border-gray-500 px-2 py-1 text-xs text-center dark:text-gray-300">
+                {cell}
+              </td>
+            )}
+          </React.Fragment>
+        ))}
+
+        <td className="border border-gray-500 px-2 py-1 text-xs text-center dark:text-gray-300">
+          {conductor}
+        </td>
+        <td className="border border-gray-500 px-2 py-1 text-xs text-center dark:text-gray-300">
+          {total > 0 ? `+${total}` : total < 0 ? total : "+0"}
+        </td>
+        
+        {/* ⬇️ NUEVA COLUMNA CON BOTÓN */}
+        <td className="border border-gray-500 px-2 py-1 text-xs text-center">
+          <DataOffLineGps
+            ruta={selectedRoute}
+            fecha={date}
+            onDataSent={handleDataSent}
+            specificVehicle={deviceId as string} // ⬅️ Pasar la unidad específica
+            buttonVariant="small" // ⬅️ Usar botón pequeño
+          />
+        </td>
+      </tr>
+    );
+  })}
+</tbody>
+
           </table>
         </div>
       )}
