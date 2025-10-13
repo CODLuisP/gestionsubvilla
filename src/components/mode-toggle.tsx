@@ -23,7 +23,8 @@ export function ModeToggle() {
         <span className="sr-only">Cambiar tema</span>
       </Button>
 
-      
+
+
     )
   }
 
