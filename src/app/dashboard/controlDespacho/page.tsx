@@ -421,14 +421,14 @@ const handleSearch = async () => {
             </button>
           </div>
 
-          {/* Componente DataOffLineGps */}
+          {/* Componente DataOffLineGps
           <div className="w-full xl:w-auto flex justify-center items-center">
             <DataOffLineGps
               ruta={selectedRoute}
               fecha={date}
               onDataSent={handleDataSent}
             />
-          </div>
+          </div> */}
         </div>
       </div>
 
