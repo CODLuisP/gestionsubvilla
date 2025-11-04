@@ -138,7 +138,7 @@ export default function ModalDespacho({
 
     try {
       const response = await axios.post(
-        "https://villa.velsat.pe:8443/api/Caja/asignar",
+        "https://villa.velsat.pe:8443/api/Caja/asignarB",
         payload
       );
       console.log("Respuesta de la API:", response.data);
