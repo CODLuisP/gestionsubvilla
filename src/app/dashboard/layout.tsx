@@ -51,6 +51,11 @@ const breadcrumbMap: Record<string, { parent: string; current: string }> = {
     current: "Control Despacho",
   },
   
+  
+    "/dashboard/reporteVueltas": {
+    parent: "Reporte de Vueltas",
+    current: "Reporte Vueltas",
+  },
 };
 
 export default function Page({ children }: { children: React.ReactNode }) {

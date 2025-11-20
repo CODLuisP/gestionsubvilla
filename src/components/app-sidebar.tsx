@@ -60,6 +60,10 @@ const data = {
           title: "Despacho Unidades",
           url: "/dashboard/unidades",
         },
+        {
+          title: "Reporte Vueltas",
+          url: "/dashboard/reporteVueltas",
+        },
  
       ],
     },
