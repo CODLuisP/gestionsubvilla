@@ -32,7 +32,7 @@ const data = {
     {
       name: "VELSAT",
       logo: GalleryVerticalEnd,
-      plan: "Usuario: Transporvilla",
+      plan: "Usuario: Etudvrb",
     },
     {
       name: "Acme Corp.",
@@ -47,7 +47,7 @@ const data = {
   ],
   navMain: [
     {
-      title: "Control Despacho",
+      title: "Gestión Despacho",
       url: "#",
       icon: SquareTerminal,
       isActive: true,
@@ -64,7 +64,7 @@ const data = {
       ],
     },
         {
-      title: "Unidades / Conductores",
+      title: "Administración",
       url: "#",
       icon: SquareTerminal,
       isActive: true,
