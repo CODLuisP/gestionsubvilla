@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { Search } from "lucide-react";
 import { format } from "date-fns";
 
@@ -39,7 +39,7 @@ interface VueltaData {
 
 export default function ReporteVueltasPage() {
   const [fecha, setFecha] = useState<string>("");
-  const [ruta, setRuta] = useState<string>("5");
+  const [ruta, setRuta] = useState<string>("25");
   const [data, setData] = useState<VueltaData[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [hasSearched, setHasSearched] = useState<boolean>(false);
@@ -54,12 +54,12 @@ export default function ReporteVueltasPage() {
       const [year, month, day] = fecha.split("-");
       const formattedDate = `${day}/${month}/${year}`;
       
-      // The API requires ruta=5 always, as per instructions
+      // The API requires ruta=25 always, as per instructions
       const response = await fetch(
         `https://villa.velsat.pe:8443/api/Caja/vueltas?fecha=${encodeURIComponent(
           formattedDate
-        )}&ruta=5`
-      );
+        )}&ruta=25`
+      )
 
       if (!response.ok) {
         throw new Error("Error fetching data");
@@ -82,13 +82,11 @@ export default function ReporteVueltasPage() {
   );
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Reporte Vueltas</h1>
-      </div>
+    <div className="flex flex-col gap-4 p-4">
+ 
 
-      <div className="flex flex-col gap-4 md:flex-row md:items-end bg-white p-4 rounded-lg border shadow-sm">
-        <div className="grid w-full max-w-sm items-center gap-1.5">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end bg-white p-4 border shadow-sm">
+        <div className="grid  max-w-sm items-center gap-1.5">
           <label htmlFor="fecha" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
             Fecha
           </label>
@@ -100,7 +98,7 @@ export default function ReporteVueltasPage() {
           />
         </div>
 
-        <div className="grid w-full max-w-sm items-center gap-1.5">
+        <div className="grid max-w-sm items-center gap-1.5">
           <label htmlFor="ruta" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
             Ruta
           </label>
@@ -109,12 +107,12 @@ export default function ReporteVueltasPage() {
               <SelectValue placeholder="Seleccione ruta" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="5">1384-choriilos-vmt</SelectItem>
+              <SelectItem value="25">1384-choriilos-vmt</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        <Button onClick={handleSearch} disabled={loading || !fecha} className="w-full md:w-auto">
+        <Button onClick={handleSearch} disabled={loading || !fecha} >
           {loading ? (
             "Buscando..."
           ) : (
@@ -125,18 +123,30 @@ export default function ReporteVueltasPage() {
         </Button>
       </div>
 
-      <div className="rounded-md border bg-white shadow-sm overflow-hidden">
+      <div className="border bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/50 hover:bg-muted/50">
-                <TableHead className="w-[50px] text-center font-bold text-primary">ITEM</TableHead>
-                <TableHead className="w-[100px] font-bold text-primary">Unidad</TableHead>
-                <TableHead className="min-w-[200px] font-bold text-primary">Conductor</TableHead>
+              <TableRow className="bg-blue-50">
+                <TableHead rowSpan={2} className="w-[50px] text-center font-bold text-primary border-r">Item</TableHead>
+                <TableHead rowSpan={2} className="w-[100px] font-bold text-primary border-r">Unidad</TableHead>
+                <TableHead rowSpan={2} className="min-w-[200px] font-bold text-primary border-r">Conductor</TableHead>
                 {Array.from({ length: maxVueltas }).map((_, index) => (
-                  <TableHead key={index} className="text-center font-bold text-primary min-w-[120px] bg-blue-50/50 border-l">
+                  <TableHead key={index} colSpan={2} className="text-center font-bold text-primary bg-blue-50/50 border-b border-r last:border-r-0">
                     Vuelta {index + 1}
                   </TableHead>
+                ))}
+              </TableRow>
+              <TableRow className="bg-blue-50">
+                {Array.from({ length: maxVueltas }).map((_, index) => (
+                  <React.Fragment key={`header-${index}`}>
+                    <TableHead className="text-center text-xs font-semibold text-gray-800 bg-blue-50/30 border-r h-8">
+                      Inicio
+                    </TableHead>
+                    <TableHead className="text-center text-xs font-semibold text-gray-800 bg-blue-50/30 border-r last:border-r-0 h-8">
+                      Fin
+                    </TableHead>
+                  </React.Fragment>
                 ))}
               </TableRow>
             </TableHeader>
@@ -144,29 +154,36 @@ export default function ReporteVueltasPage() {
               {data.length > 0 ? (
                 data.map((item, index) => (
                   <TableRow key={index} className="hover:bg-muted/50">
-                    <TableCell className="text-center font-medium text-muted-foreground">
+                    <TableCell className="text-center font-medium text-muted-foreground border-r">
                       {index + 1}
                     </TableCell>
-                    <TableCell className="font-medium text-orange-500">
-                      <span className="bg-orange-100 px-2 py-0.5 rounded text-xs font-bold border border-orange-200">
+                    <TableCell className="font-medium text-orange-500 border-r">
+                      <span className="px-2 py-0.5 rounded text-xs font-bold text-gray-600 uppercase">
                         {item.codunidad}
                       </span>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground font-medium uppercase">
+                    <TableCell className="text-sm text-muted-foreground font-medium uppercase border-r">
                       {item.conductor?.nombre || "-"}
                     </TableCell>
                     {Array.from({ length: maxVueltas }).map((_, vIndex) => {
                       const despacho = item.listaDespachos?.[vIndex];
                       return (
-                        <TableCell key={vIndex} className="text-center border-l p-0">
-                          {despacho ? (
-                            <div className="flex justify-center items-center h-full w-full py-2 px-1">
-                              <div className="bg-slate-100 text-slate-600 text-xs px-2 py-1 rounded font-mono border border-slate-200 whitespace-nowrap">
-                                {despacho.fecini} {despacho.fecfin ? `- ${despacho.fecfin}` : ""}
+                        <React.Fragment key={`vuelta-${index}-${vIndex}`}>
+                          <TableCell className="text-center border-r p-0">
+                            {despacho ? (
+                              <div className="py-2 px-1 text-xs font-mono text-slate-600">
+                                {despacho.fecini}
                               </div>
-                            </div>
-                          ) : null}
-                        </TableCell>
+                            ) : null}
+                          </TableCell>
+                          <TableCell className="text-center border-r p-0">
+                            {despacho ? (
+                              <div className="py-2 px-1 text-xs font-mono text-slate-600">
+                                {despacho.fecfin || "-"}
+                              </div>
+                            ) : null}
+                          </TableCell>
+                        </React.Fragment>
                       );
                     })}
                   </TableRow>
@@ -174,7 +191,7 @@ export default function ReporteVueltasPage() {
               ) : (
                 <TableRow>
                   <TableCell
-                    colSpan={3 + maxVueltas}
+                    colSpan={3 + (maxVueltas * 2)}
                     className="h-24 text-center text-muted-foreground"
                   >
                     {hasSearched ? "No se encontraron resultados." : "Seleccione una fecha y haga clic en Buscar."}
