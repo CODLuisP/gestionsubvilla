@@ -500,7 +500,6 @@ export default function Page() {
                 const conductorIndex = row.length - 1;
                 const visibleData = row.slice(0, conductorIndex);
                 const conductor = row[conductorIndex];
-                const deviceId = row[0]; // ⬅️ La primera columna es la unidad
 
                 const total = visibleData.reduce((acc, cell, index) => {
                   if (
