@@ -93,7 +93,7 @@ export default function Page({ children }: { children: React.ReactNode }) {
                     {breadcrumb.parent}
                   </BreadcrumbLink>
                 </BreadcrumbItem>
-                <BreadcrumbSeparator className="hidden md:block text-white" />
+                {/* <BreadcrumbSeparator className="hidden md:block text-white" />
                 <BreadcrumbItem>
                   <BreadcrumbLink
                     href="/dashboard/unidades"
@@ -103,7 +103,7 @@ export default function Page({ children }: { children: React.ReactNode }) {
                   >
                     {breadcrumb.current}
                   </BreadcrumbLink>
-                </BreadcrumbItem>
+                </BreadcrumbItem> */}
               </BreadcrumbList>
             </Breadcrumb>
           </div>

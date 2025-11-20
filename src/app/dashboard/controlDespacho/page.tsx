@@ -4,7 +4,6 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
 import { FileSpreadsheet, FileText, Search, X } from "lucide-react";
-import DataOffLineGps from "./DataOffLineGps";
 
 const headersRuta25 = [
   "Unidad",
@@ -20,7 +19,6 @@ const headersRuta25 = [
   "MIYASHIRO",
   "Conductor",
   "Total",
-  "Acción"
 ];
 
 const controlesRuta25 = [
@@ -190,142 +188,75 @@ export default function Page() {
     document.body.removeChild(container);
   };
 
-const handleSearch = async () => {
-  setIsLoading(true);
-  setHasSearched(true);
+  const handleSearch = async () => {
+    setIsLoading(true);
+    setHasSearched(true);
 
-  try {
-    const url = `https://villa.velsat.pe:8443/api/Datero/controlEdu/${date}/${selectedRoute}/etudvrb`;
-    const response = await fetch(url);
-    if (!response.ok)
-      throw new Error(`Error ${response.status}: ${response.statusText}`);
-    const result = await response.json();
+    try {
+      const url = `https://villa.velsat.pe:8443/api/Datero/controlEdu/${date}/${selectedRoute}/etudvrb`;
+      const response = await fetch(url);
+      if (!response.ok)
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      const result = await response.json();
 
-    if (result.data.length === 0) {
-      setRows([]);
-      return;
-    }
-
-    result.data.sort((a: Despacho, b: Despacho) => b.codasig - a.codasig);
-
-    const newRows = result.data.map((item: Despacho) => {
-      const base = [item.deviceid, item.hora_inicio, item.hora_registro];
-
-      const controlMap: Record<string, string[]> = {};
-      controlesRuta25.forEach((control) => {
-        controlMap[control.toUpperCase()] = ["", "", ""];
-      });
-
-      // Procesar todos los controles normalmente
-      item.controles.forEach((c: Control) => {
-        const nom = c.nom_control?.toUpperCase()?.trim();
-        if (nom && controlMap[nom]) {
-          let voladoNumerico = "0";
-          if (c.volado) {
-            const voladoStr = c.volado.trim();
-            if (voladoStr.toLowerCase().includes("m")) {
-              voladoNumerico = voladoStr.match(/^[+-]?\d+/)?.[0] || "0";
-            } else if (voladoStr.toLowerCase().endsWith("seg")) {
-              voladoNumerico = "+0";
-            } else {
-              voladoNumerico = voladoStr.match(/^[+-]?\d+/)?.[0] || "0";
-            }
-          } else {
-            voladoNumerico = "0";
-          }
-          controlMap[nom] = [
-            c.hora_estimada || "",
-            c.hora_llegada || "",
-            voladoNumerico,
-          ];
-        }
-      });
-
-      // Función para convertir hora a segundos totales del día
-      const horaASegundos = (hora: string): number | null => {
-        if (!hora || hora.trim() === "") return null;
-        
-        const partes = hora.split(":");
-        if (partes.length < 2) return null;
-        
-        const horas = parseInt(partes[0]);
-        const minutos = parseInt(partes[1]);
-        const segundos = partes.length === 3 ? parseInt(partes[2]) : 0;
-        
-        if (isNaN(horas) || isNaN(minutos) || isNaN(segundos)) return null;
-        
-        return horas * 3600 + minutos * 60 + segundos;
-      };
-
-      // **LÓGICA: Verificar PARADERO 15**
-      const paradero15 = controlMap["PARADERO 15"];
-      const paradero15HoraEstimada = paradero15[0]?.trim() || "";
-      const paradero15HoraLlegada = paradero15[1]?.trim() || "";
-      
-      const paradero15Vacio = 
-        paradero15HoraEstimada === "" && paradero15HoraLlegada === "";
-
-      if (paradero15Vacio) {
-        // Si PARADERO 15 está vacío, limpiar controles posteriores
-        const controlesALimpiar = [
-          "CVA. ESPERANZA",
-          "CT",
-          "FERRETERÍA",
-          "MIYASHIRO"
-        ];
-        
-        controlesALimpiar.forEach(control => {
-          controlMap[control.toUpperCase()] = ["", "", ""];
-        });
-      } else {
-        // Si PARADERO 15 tiene datos, usar su hora de LLEGADA (verde) como referencia
-        const paradero15Segundos = horaASegundos(paradero15HoraLlegada);
-
-        if (paradero15Segundos !== null) {
-          const controlesAEvaluar = [
-            "CVA. ESPERANZA",
-            "CT",
-            "FERRETERÍA",
-            "MIYASHIRO"
-          ];
-
-          controlesAEvaluar.forEach(control => {
-            const controlData = controlMap[control.toUpperCase()];
-            const controlHoraLlegada = controlData[1]?.trim() || "";
-            
-            // Usar la hora de LLEGADA (verde) del control para comparar
-            const controlSegundos = horaASegundos(controlHoraLlegada);
-
-            // Si el control no tiene hora de llegada válida o NO es mayor a PARADERO 15, limpiarlo
-            if (controlSegundos === null || controlSegundos <= paradero15Segundos) {
-              controlMap[control.toUpperCase()] = ["", "", ""];
-            }
-          });
-        }
+      if (result.data.length === 0) {
+        setRows([]);
+        return;
       }
 
-      const controlValues = headersRuta25
-        .map((header, i) =>
-          subdividedColumns.includes(i) ? controlMap[header.toUpperCase()] : null
-        )
-        .filter((v) => v !== null) as string[][];
+      result.data.sort((a: Despacho, b: Despacho) => b.codasig - a.codasig);
 
-      return [...base, ...controlValues, item.nombreConductor];
-    });
+      const newRows = result.data.map((item: Despacho) => {
+        const base = [item.deviceid, item.hora_inicio, item.hora_registro];
 
-    setRows(newRows);
-  } catch (error) {
-    console.error("Error al obtener datos:", error);
-    setRows([]);
-  } finally {
-    setIsLoading(false);
-  }
-};
+        const controlMap: Record<string, string[]> = {};
+        controlesRuta25.forEach((control) => {
+          controlMap[control.toUpperCase()] = ["", "", ""];
+        });
 
-  // Callback cuando se envían datos desde DataOffLineGps
-  const handleDataSent = async () => {
-    console.log("Datos enviados exitosamente desde DataOffLineGps, recargando tabla...");
-    await handleSearch();
+        // Procesar todos los controles normalmente
+        item.controles.forEach((c: Control) => {
+          const nom = c.nom_control?.toUpperCase()?.trim();
+          if (nom && controlMap[nom]) {
+            let voladoNumerico = "0";
+            if (c.volado) {
+              const voladoStr = c.volado.trim();
+              if (voladoStr.toLowerCase().includes("m")) {
+                voladoNumerico = voladoStr.match(/^[+-]?\d+/)?.[0] || "0";
+              } else if (voladoStr.toLowerCase().endsWith("seg")) {
+                voladoNumerico = "+0";
+              } else {
+                voladoNumerico = voladoStr.match(/^[+-]?\d+/)?.[0] || "0";
+              }
+            } else {
+              voladoNumerico = "0";
+            }
+            controlMap[nom] = [
+              c.hora_estimada || "",
+              c.hora_llegada || "",
+              voladoNumerico,
+            ];
+          }
+        });
+
+        const controlValues = headersRuta25
+          .map((header, i) =>
+            subdividedColumns.includes(i)
+              ? controlMap[header.toUpperCase()]
+              : null
+          )
+          .filter((v) => v !== null) as string[][];
+
+        return [...base, ...controlValues, item.nombreConductor];
+      });
+
+      setRows(newRows);
+    } catch (error) {
+      console.error("Error al obtener datos:", error);
+      setRows([]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const filteredRows = rows.filter((row) => {
@@ -364,7 +295,6 @@ const handleSearch = async () => {
               </div>
             </div>
           </div>
-
           {/* Fecha */}
           <div className="w-full max-w-md xl:max-w-none xl:w-auto">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
@@ -380,7 +310,6 @@ const handleSearch = async () => {
               />
             </div>
           </div>
-
           {/* Botón Buscar */}
           <div className="w-full max-w-md xl:max-w-none xl:w-auto flex justify-center xl:justify-start mt-2 xl:mt-0">
             <button
@@ -420,15 +349,6 @@ const handleSearch = async () => {
               )}
             </button>
           </div>
-
-          {/* Componente DataOffLineGps
-          <div className="w-full xl:w-auto flex justify-center items-center">
-            <DataOffLineGps
-              ruta={selectedRoute}
-              fecha={date}
-              onDataSent={handleDataSent}
-            />
-          </div> */}
         </div>
       </div>
 
@@ -498,9 +418,6 @@ const handleSearch = async () => {
           <h3 className="text-lg font-medium text-gray-600 dark:text-gray-300">
             Seleccione una fecha y presione Buscar
           </h3>
-          <p className="text-gray-500 dark:text-gray-400 text-center">
-            O use el botón &quot;Cargar voladas&quot; para datos offline
-          </p>
         </div>
       )}
 
@@ -551,109 +468,111 @@ const handleSearch = async () => {
         <div id="tabla-pdf" className="overflow-x-auto">
           <table className="min-w-full border text-sm text-center border-collapse">
             <thead>
-  <tr className="bg-slate-200">
-    {headersRuta25.map((header, index) => {
-      if (subdividedColumns.includes(index)) {
-        return (
-          <th
-            key={index}
-            colSpan={3}
-            className="border border-gray-500 px-3 py-2 font-bold text-[11px] uppercase text-center text-black"
-          >
-            {header}
-          </th>
-        );
-      } else {
-        return (
-          <th
-            key={index}
-            rowSpan={2}
-            className="border border-gray-500 px-3 py-2 font-bold text-[11px] align-middle text-center text-black"
-          >
-            {header}
-          </th>
-        );
-      }
-    })}
-  </tr>
-</thead>
+              <tr className="bg-slate-200">
+                {headersRuta25.map((header, index) => {
+                  if (subdividedColumns.includes(index)) {
+                    return (
+                      <th
+                        key={index}
+                        colSpan={3}
+                        className="border border-gray-500 px-3 py-2 font-bold text-[11px] uppercase text-center text-black"
+                      >
+                        {header}
+                      </th>
+                    );
+                  } else {
+                    return (
+                      <th
+                        key={index}
+                        rowSpan={2}
+                        className="border border-gray-500 px-3 py-2 font-bold text-[11px] align-middle text-center text-black"
+                      >
+                        {header}
+                      </th>
+                    );
+                  }
+                })}
+              </tr>
+            </thead>
 
             <tbody>
-  {filteredRows.map((row, rowIndex) => {
-    const conductorIndex = row.length - 1;
-    const visibleData = row.slice(0, conductorIndex);
-    const conductor = row[conductorIndex];
-    const deviceId = row[0]; // ⬅️ La primera columna es la unidad
-    
-    const total = visibleData.reduce((acc, cell, index) => {
-      if (subdividedColumns.includes(index) && Array.isArray(cell)) {
-        const raw = (cell[2] || "0").trim();
-        if (raw === "+0") return acc;
-        const value = parseInt(raw);
-        if (!isNaN(value) && value > 0) acc += value;
-      }
-      return acc;
-    }, 0);
+              {filteredRows.map((row, rowIndex) => {
+                const conductorIndex = row.length - 1;
+                const visibleData = row.slice(0, conductorIndex);
+                const conductor = row[conductorIndex];
+                const deviceId = row[0]; // ⬅️ La primera columna es la unidad
 
-    const hasHours = hasControlTimes(row);
+                const total = visibleData.reduce((acc, cell, index) => {
+                  if (
+                    subdividedColumns.includes(index) &&
+                    Array.isArray(cell)
+                  ) {
+                    const raw = (cell[2] || "0").trim();
+                    if (raw === "+0") return acc;
+                    const value = parseInt(raw);
+                    if (!isNaN(value) && value > 0) acc += value;
+                  }
+                  return acc;
+                }, 0);
 
-    return (
-      <tr key={rowIndex} className={"bg-gray"}>
-        {visibleData.map((cell, cellIndex) => (
-          <React.Fragment key={cellIndex}>
-            {subdividedColumns.includes(cellIndex) ? (
-              (cell as string[]).map((value, i) => {
-                let bgColor = "";
-                if (hasHours) {
-                  bgColor =
-                    i === 0
-                      ? "bg-[#fdecc1]"
-                      : i === 1
-                      ? "bg-[#cbfdc1]"
-                      : "bg-[#c1fdeb]";
-                } else {
-                  bgColor = "bg-gray-200";
-                }
+                const hasHours = hasControlTimes(row);
 
                 return (
-                  <td
-                    key={`${cellIndex}-${i}`}
-                    className={`border border-gray-500 py-1 text-xs text-center ${bgColor} text-gray-800`}
-                  >
-                    {value}
-                  </td>
+                  <tr key={rowIndex} className={"bg-gray"}>
+                    {visibleData.map((cell, cellIndex) => (
+                      <React.Fragment key={cellIndex}>
+                        {subdividedColumns.includes(cellIndex) ? (
+                          (cell as string[]).map((value, i) => {
+                            let bgColor = "";
+                            if (hasHours) {
+                              bgColor =
+                                i === 0
+                                  ? "bg-[#fdecc1]"
+                                  : i === 1
+                                  ? "bg-[#cbfdc1]"
+                                  : "bg-[#c1fdeb]";
+                            } else {
+                              bgColor = "bg-gray-200";
+                            }
+
+                            return (
+                              <td
+                                key={`${cellIndex}-${i}`}
+                                className={`border border-gray-500 py-1 text-xs text-center ${bgColor} text-gray-800`}
+                              >
+                                {value}
+                              </td>
+                            );
+                          })
+                        ) : (
+                          <td className="border border-gray-500 px-2 py-1 text-xs text-center dark:text-gray-300">
+                            {cell}
+                          </td>
+                        )}
+                      </React.Fragment>
+                    ))}
+
+                    <td className="border border-gray-500 px-2 py-1 text-xs text-center dark:text-gray-300">
+                      {conductor}
+                    </td>
+                    <td className="border border-gray-500 px-2 py-1 text-xs text-center dark:text-gray-300">
+                      {total > 0 ? `+${total}` : total < 0 ? total : "+0"}
+                    </td>
+
+                    {/* ⬇️ NUEVA COLUMNA CON BOTÓN */}
+                    {/* <td className="border border-gray-500 px-2 py-1 text-xs text-center">
+                      <DataOffLineGps
+                        ruta={selectedRoute}
+                        fecha={date}
+                        onDataSent={handleDataSent}
+                        specificVehicle={deviceId as string} // ⬅️ Pasar la unidad específica
+                        buttonVariant="small" // ⬅️ Usar botón pequeño
+                      />
+                    </td> */}
+                  </tr>
                 );
-              })
-            ) : (
-              <td className="border border-gray-500 px-2 py-1 text-xs text-center dark:text-gray-300">
-                {cell}
-              </td>
-            )}
-          </React.Fragment>
-        ))}
-
-        <td className="border border-gray-500 px-2 py-1 text-xs text-center dark:text-gray-300">
-          {conductor}
-        </td>
-        <td className="border border-gray-500 px-2 py-1 text-xs text-center dark:text-gray-300">
-          {total > 0 ? `+${total}` : total < 0 ? total : "+0"}
-        </td>
-        
-        {/* ⬇️ NUEVA COLUMNA CON BOTÓN */}
-        <td className="border border-gray-500 px-2 py-1 text-xs text-center">
-          <DataOffLineGps
-            ruta={selectedRoute}
-            fecha={date}
-            onDataSent={handleDataSent}
-            specificVehicle={deviceId as string} // ⬅️ Pasar la unidad específica
-            buttonVariant="small" // ⬅️ Usar botón pequeño
-          />
-        </td>
-      </tr>
-    );
-  })}
-</tbody>
-
+              })}
+            </tbody>
           </table>
         </div>
       )}
